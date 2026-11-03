@@ -1,0 +1,6 @@
+.venv/
+__pycache__/
+*.egg-info/
+# per-run output (trial CSVs, session logs, photos); keep the folder
+runs/*
+!runs/.gitkeep

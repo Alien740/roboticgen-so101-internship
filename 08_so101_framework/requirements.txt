@@ -1,0 +1,10 @@
+# Versions tested on the reference setup (Windows 11, Python 3.12.9). lerobot is pinned to the
+# exact commit the framework was developed against; feetech extra = STS3215 motor SDK.
+lerobot[feetech] @ git+https://github.com/huggingface/lerobot.git@8c920c42   # feetech-servo-sdk 1.0.0, torch 2.11
+numpy==2.2.6
+scipy==1.18.1
+opencv-python-headless==4.13.0.92   # what lerobot installs; no GUI windows -> previews are saved as images
+yourdfpy==0.0.60
+pyyaml==6.0.3
+pyserial==3.5
+pytest>=8

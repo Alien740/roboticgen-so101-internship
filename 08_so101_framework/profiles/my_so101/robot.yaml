@@ -1,0 +1,132 @@
+# Robot profile: everything specific to ONE physical SO-101 + its workspace.
+# Code never hard-codes these values. Copy this folder to make a profile for another arm.
+# Values marked "measured" are written by `so101 doctor --measure` (and calibration commands).
+
+robot:
+  id: my_so101                 # lerobot calibration id -> calibration/<id>.json is the motor calibration
+  port: auto                   # "auto" = find the port where motors 1-6 answer; or e.g. COM4, /dev/ttyACM0
+  baudrate: 1000000
+  supply_voltage: 5.0          # 5 V kit: weak gripper, see gripper section
+
+camera:
+  index: auto                  # "auto" = first live, non-black, non-virtual camera; Windows re-numbers on replug
+  width: 640
+  height: 480
+  settle_s: 0.15               # wait after a move before trusting a frame
+  max_shift_px: 3.0            # camera bumped more than this since calibration -> refuse vision tasks
+
+motion:
+  p_gain: 40                   # 55 made stepwise motion shiver; keep 40
+  i_gain: 8
+  d_gain: 48
+  max_relative: 8.0            # per-command joint cap (lifted only for gripper moves, see gripper)
+  interp_fps: 30
+  move_duration_s: 2.0
+  travel_z: 0.10               # m, carry height
+  approach_z: 0.07
+  grasp_z: 0.012               # tool-tip height when grasping a cube on the table
+  top_down_pitch: -90.0
+  reach_min: 0.15              # top-down IK at travel height needs r >= ~15 cm
+  reach_max: 0.33              # grasp; drops allow up to drop_reach_max
+  drop_reach_max: 0.37
+
+poses:                         # joint degrees (lerobot use_degrees=True)
+  home:        {shoulder_pan: 5.5, shoulder_lift: -98.9, elbow_flex: 97.1, wrist_flex: 64.3, wrist_roll: -0.1, gripper: 0.0}
+  # upright park: tool ~40 cm up, out of the camera's way. NOT home (home rests the tool on the table).
+  # wrist_roll 0 = the roll the table calibration was learned at (grasps assume it)
+  clear_view:  {shoulder_pan: 0.0, shoulder_lift: -95.0, elbow_flex: 45.0, wrist_flex: -35.0, wrist_roll: 0.0}
+
+gripper:
+  open: 100.0
+  close: 0.0
+  torque: 450                  # 300 stalled half-open on the 5 V supply; 500+ crushes the foam cube
+  empty_threshold: 2.0         # pos after closing below this = nothing held (empty closes to ~0.4)
+  jam_threshold: 40.0          # pos above this = jaw resting ON the object (read 46-55)
+  lift_step_cap_for_gripper: true   # with the 8-unit cap the jaw stalled at ~45 from fully open
+  hold_squeeze: 2.0            # long holds (pen): goal this far past contact, never 0 (0 = endless stall -> overload trip)
+  idle_torque: 400             # while waiting on a human
+  fixed_jaw_side: "+x"         # tool +x points to the FIXED jaw; calibration grasps leave the object against it
+  cube_clearance: 0.008        # m, shift grasp toward the fixed jaw so it lands beside the object
+
+wrist:
+  # measured: roll strains at full load (-1000) near +80 deg; turns freely to -100.
+  roll_min_ok: -100.0
+  roll_max_ok: 75.0
+  # measured: a pen held ACROSS the jaws lies along tool +x (the jaw-closing axis) - the URDF's
+  # wrist-roll zero is ~90 deg off the real arm, so "pen down" = gripper unrotated + wrist tilted up.
+  # (draw session learned (R^T * down) = [1, 0, 0.03] from the pose the user confirmed as vertical)
+  pen_dir_tool: [1.0, 0.0, 0.03]
+
+objects:
+  cube:   {color: orange, size: [0.019, 0.016], height: 0.019, grasp_z: 0.012, torque: 450, max_aspect: 1.6}
+  lego:   {color: yellow, size: [0.0316, 0.0156], height: 0.0114, grasp_z: 0.004, torque: 800, max_aspect: 2.8, align: true}
+  # brick: 49.7 mm across vs a ~60 mm jaw opening -> only 3 mm fixed-jaw clearance fits
+  brick:  {color: yellow, size: [0.0797, 0.0497], height: 0.0299, grasp_z: 0.015, torque: 450, max_aspect: 2.2, align: true, clearance: 0.003}
+
+basket:
+  color: yellow
+  height: 0.030
+  rim_clear: 0.015             # lower release: a soft cube released higher sprang out
+  release_open: 45.0           # open partway ...
+  release_s: 1.5               # ... and slowly
+  min_area_px: 1500
+
+detection:
+  min_area_px: 120
+  max_area_px: 20000
+  min_fill: 0.70
+  max_roundness: 0.88
+  colors:                      # Lab thresholds proved stable under warm/cool light; HSV did not
+    orange: [{space: lab, lo: [20, 138, 0], hi: [255, 255, 255], core_a: 148}]
+    yellow: [{space: lab, lo: [60, 0, 175], hi: [255, 135, 255]}]
+    red:    [[0, 120, 70, 8, 255, 255], [170, 120, 70, 180, 255, 255]]
+    green:  [[40, 80, 50, 85, 255, 255]]
+    blue:   [[95, 120, 50, 130, 255, 255]]
+
+drawing:
+  center: [0.28, 0.0]          # a vertical pen is only reachable ~24-33 cm out
+  band_x: [0.27, 0.29]
+  band_y: [-0.06, 0.06]
+  max_size_mm: 60
+  press: 0.0025                # m past the touched height
+  speed: 0.012                 # m/s
+  rate_hz: 30                  # command rate (2 mm waypoints held 0.17 s each caused "shivering")
+  lift: 0.015
+  pen_torque: 650
+  load_xy: [0.20, 0.0]
+  load_z: 0.12
+  load_roll: 0.0               # load with the gripper unrotated (user preference + avoids the +80 jam)
+
+calibration:
+  table_file: calibration/table_calib.json
+  reference_image: calibration/calib_ref.png
+  intrinsics_file: calibration/intrinsics.npz   # absent -> approximate pinhole (65 deg HFOV)
+  approx_hfov_deg: 65.0
+  board: {cols: 9, rows: 6, square_mm: 25.0}   # checkerboard INNER corners + measured square size
+
+# Measured quirks are written to measured.yaml next to this file (by `so101 doctor --measure`).
+
+tasks:
+  max_attempts: 3              # grasp retries per object (re-detect between tries; logged)
+  pick_place:
+    object: cube
+    place_xy: [0.10, 0.16]     # fixed destination, base frame (m)
+    place_z: 0.014             # release ~2 mm above grasp height (cube on the table)
+    success_tol_mm: 20
+  basket:
+    object: cube
+  multi:
+    objects: [cube, lego]
+  stack:
+    object: brick              # hollow brick dropped over...
+    target: cube               # ...this object
+    drop_clear: 0.006          # brick bottom this far above the target top at release
+    success_tol_mm: 15
+  table_calibration:
+    object: cube
+    handover_xy: [0.20, 0.0]   # cube is placed on the table here, under the open jaws
+    release_dz: 0.002          # release 2 mm above grasp height (handing it INTO the jaws gave a 2 cm drop)
+    # 21 points: 3x3 main grid + 3x4 offset grid (one has no top-down solution and is skipped)
+    grids:                     # base-frame metres; "all" = main + offset, visited row by row
+      main:   {x: [0.15, 0.21, 0.27], y: [-0.10, 0.0, 0.10]}
+      offset: {x: [0.18, 0.24, 0.30], y: [-0.13, -0.05, 0.05, 0.13]}

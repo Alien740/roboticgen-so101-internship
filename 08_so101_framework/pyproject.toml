@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "so101"
+version = "0.1.0"
+description = "Vision-guided pick & place, basket sorting and pen drawing for the SO-101 arm (lerobot)"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy>=1.26",
+  "scipy>=1.11",
+  "opencv-python-headless>=4.9",
+  "yourdfpy>=0.0.56",
+  "pyyaml>=6",
+  "pyserial>=3.5",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+so101 = "so101.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["so101*"]
+
+[tool.setuptools.package-data]
+so101 = ["assets/*.urdf"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

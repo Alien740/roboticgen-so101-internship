@@ -1,0 +1,144 @@
+[
+  {
+    "type": "function",
+    "function": {
+      "name": "so101_doctor",
+      "description": "Health check of python, motors, camera, calibration. Read-only: never moves the arm.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "so101_detect",
+      "description": "What the camera sees for the given colours, with robot coordinates. Read-only: never moves the arm.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "colors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "e.g. ['orange','yellow']"
+          }
+        },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "so101_report",
+      "description": "Trial metrics per task (detection, grasp, success, error, cycle time, failures). Read-only: never moves the arm.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "so101_agent_start",
+      "description": "Start a task in the background. args examples: ['basket','--trials','3'], ['draw'], ['calibrate','table'], ['doctor','--measure'], ['stack','--hover'], ['demo']. MOVES THE ARM: only after the human's explicit go-ahead in the conversation.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "args"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "so101_agent_wait",
+      "description": "Block until the running task asks a question or ends. Returns JSON {state, prompt, options, events}. Read-only: never moves the arm.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "timeout_s": {
+            "type": "number",
+            "default": 300
+          }
+        },
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "so101_agent_status",
+      "description": "Current state/prompt/events of the running task. Read-only: never moves the arm.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "so101_agent_answer",
+      "description": "Answer the task's current prompt. Human-only prompts (physical confirmations, heights, 'touch') must come from the human. MOVES THE ARM: only after the human's explicit go-ahead in the conversation.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "text"
+        ]
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "so101_agent_stop",
+      "description": "Stop the running task's motion immediately. Always allowed.",
+      "parameters": {
+        "type": "object",
+        "properties": {},
+        "required": []
+      }
+    }
+  },
+  {
+    "type": "function",
+    "function": {
+      "name": "read_doc",
+      "description": "Read a framework file: AGENTS.md, docs/PROCEDURES.md, docs/TROUBLESHOOTING.md, profiles/<name>/robot.yaml, runs/<name>/report.md, runs/<name>/doctor_report.json. Read-only: never moves the arm.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "path"
+        ]
+      }
+    }
+  }
+]
