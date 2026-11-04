@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SO-101 Dashboard</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="logo">SO-101</span>
+    <span id="modeBadge" class="badge off">DISCONNECTED</span>
+    <span id="ownerPill" class="pill" title="who is driving the arm">idle</span>
+  </div>
+  <div class="conn">
+    <button id="btnSim" class="btn">Simulated arm</button>
+    <button id="btnReal" class="btn primary">Connect real arm</button>
+    <button id="btnDisc" class="btn" hidden>Park &amp; disconnect</button>
+  </div>
+  <div class="speed seg" role="radiogroup" aria-label="Speed">
+    <button data-speed="slow">Slow</button>
+    <button data-speed="normal" class="on">Normal</button>
+    <button data-speed="fast">Fast</button>
+  </div>
+  <label class="toggle" title="Torque off = the arm goes limp so you can move it by hand. Hold it first!">
+    <input type="checkbox" id="torque" checked> <span>Torque</span>
+  </label>
+  <button id="btnEstop" class="estop" title="Space or Esc, gamepad B">E-STOP</button>
+  <button id="btnReset" class="btn warn" hidden>Reset E-STOP</button>
+</header>
+
+<div id="errorBar" class="errorbar" hidden></div>
+
+<main class="layout">
+  <section class="twin card">
+    <div class="twin-head">
+      <h2>3D twin</h2>
+      <div class="seg small" id="views">
+        <button data-view="iso" class="on">3D</button>
+        <button data-view="front">Front</button>
+        <button data-view="side">Side</button>
+        <button data-view="top">Top</button>
+      </div>
+    </div>
+    <div class="twin-wrap">
+      <canvas id="twin"></canvas>
+      <div class="twin-overlay">
+        <div><span class="k">tool</span> <span id="toolXyz">–</span></div>
+        <div><span class="k">pitch</span> <span id="toolPitch">–</span></div>
+        <div><span class="k">loop</span> <span id="rate">–</span></div>
+      </div>
+      <div id="twinMsg" class="twin-msg">Loading 3D model…</div>
+    </div>
+    <ul id="warnings" class="warnings"></ul>
+  </section>
+
+  <section class="side card">
+    <nav class="tabs" role="tablist">
+      <button class="tab on" data-tab="manual">Manual</button>
+      <button class="tab" data-tab="status">Status</button>
+      <button class="tab soon" disabled title="subset 2">Motions</button>
+      <button class="tab soon" disabled title="subset 2">Record</button>
+      <button class="tab soon" disabled title="subset 3">Tasks</button>
+      <button class="tab soon" disabled title="subset 4">Draw</button>
+      <button class="tab soon" disabled title="subset 3">Calibrate</button>
+      <button class="tab soon" disabled title="subset 5">AI</button>
+    </nav>
+
+    <div class="tabpane" id="tab-manual">
+      <h3>Poses</h3>
+      <div id="poses" class="row wrap"></div>
+
+      <h3>Joints <small>drag a slider; the arm follows at the chosen speed</small></h3>
+      <div id="sliders" class="sliders"></div>
+
+      <h3>Gripper</h3>
+      <div class="row">
+        <button class="btn" id="gripOpen">Open</button>
+        <button class="btn" id="gripClose">Close</button>
+        <small class="muted">a stalled grip is eased off automatically (protects the motor)</small>
+      </div>
+
+      <h3>Move the tool <small>hold a button: straight lines, pitch kept</small></h3>
+      <div class="cartpad">
+        <div class="pad">
+          <span></span><button class="jog" data-cart="x:1">X+ fwd</button><span></span>
+          <button class="jog" data-cart="y:1">Y+ left</button><span class="pad-c">XY</span><button class="jog" data-cart="y:-1">Y− right</button>
+          <span></span><button class="jog" data-cart="x:-1">X− back</button><span></span>
+        </div>
+        <div class="pad z">
+          <button class="jog" data-cart="z:1">Z+ up</button>
+          <span class="pad-c">Z</span>
+          <button class="jog" data-cart="z:-1">Z− down</button>
+        </div>
+      </div>
+
+      <h3>Keyboard &amp; gamepad</h3>
+      <div class="inputs">
+        <div class="input-card">
+          <label class="toggle"><input type="checkbox" id="armKeys"> <span>Keyboard control</span></label>
+          <table class="keys">
+            <tr><td><kbd>Q</kbd><kbd>E</kbd></td><td>base pan</td><td><kbd>↑</kbd><kbd>↓</kbd></td><td>tool fwd/back</td></tr>
+            <tr><td><kbd>W</kbd><kbd>S</kbd></td><td>shoulder</td><td><kbd>←</kbd><kbd>→</kbd></td><td>tool left/right</td></tr>
+            <tr><td><kbd>A</kbd><kbd>D</kbd></td><td>elbow</td><td><kbd>PgUp</kbd><kbd>PgDn</kbd></td><td>tool up/down</td></tr>
+            <tr><td><kbd>Z</kbd><kbd>X</kbd></td><td>wrist flex</td><td><kbd>Shift</kbd></td><td>boost ×2</td></tr>
+            <tr><td><kbd>R</kbd><kbd>F</kbd></td><td>wrist roll</td><td><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></td><td>speed</td></tr>
+            <tr><td><kbd>T</kbd><kbd>G</kbd></td><td>grip close/open</td><td><kbd>Space</kbd><kbd>Esc</kbd></td><td><b>E-STOP</b> (always)</td></tr>
+          </table>
+        </div>
+        <div class="input-card">
+          <label class="toggle"><input type="checkbox" id="armPad"> <span>Gamepad control</span></label>
+          <div id="padStatus" class="muted">No gamepad – plug one in and press any button.</div>
+          <div class="seg small" id="padMode">
+            <button data-mode="joint" class="on">Joint mode</button>
+            <button data-mode="cart">Tool mode</button>
+          </div>
+          <table class="keys" id="padHelp"></table>
+        </div>
+      </div>
+    </div>
+
+    <div class="tabpane" id="tab-status" hidden>
+      <h3>Motors</h3>
+      <table class="motors">
+        <thead><tr><th>#</th><th>joint</th><th>pos</th><th>goal</th><th>°C</th><th>V</th><th>load</th><th>torque</th><th>faults</th></tr></thead>
+        <tbody id="motorRows"></tbody>
+      </table>
+      <p class="muted" id="motorNote"></p>
+
+      <h3>This computer</h3>
+      <dl id="sysInfo" class="kv"></dl>
+
+      <h3>Doctor <small>read-only health check (needs the arm disconnected)</small></h3>
+      <button class="btn" id="btnDoctor">Run doctor</button>
+      <pre id="doctorOut" class="console" hidden></pre>
+    </div>
+  </section>
+</main>
+
+<div id="toast" class="toast" hidden></div>
+<script src="twin.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
