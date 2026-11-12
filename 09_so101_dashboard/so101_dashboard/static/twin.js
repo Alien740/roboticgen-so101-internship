@@ -73,8 +73,8 @@ const Twin = (() => {
       printed: [0.90, 0.91, 0.92],                 // white printed arm parts
       holder: [0.008, 0.184, 0.286],               // motor holders, #022F49
       motor: [0.07, 0.07, 0.08],                   // black STS3215 servos
-      grid: dark ? [0.22, 0.25, 0.29] : [0.78, 0.81, 0.85],
-      reach: dark ? [0.25, 0.42, 0.75] : [0.45, 0.60, 0.90],
+      grid: dark ? [0.22, 0.23, 0.24] : [0.80, 0.81, 0.82],    // neutral greys
+      reach: [0.129, 0.612, 0.737],                            // teal #219CBC
       axisX: [0.85, 0.25, 0.25], axisY: [0.2, 0.7, 0.3],
     };
 
