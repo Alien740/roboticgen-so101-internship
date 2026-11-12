@@ -70,8 +70,9 @@ const Twin = (() => {
     const cam = { yaw: VIEWS.iso[0], pitch: VIEWS.iso[1], dist: VIEWS.iso[2], at: [0.12, 0, 0.17] };
     const dark = matchMedia("(prefers-color-scheme: dark)").matches;
     const COLORS = {
-      printed: dark ? [0.86, 0.84, 0.80] : [0.95, 0.93, 0.89],
-      motor: dark ? [0.20, 0.21, 0.23] : [0.17, 0.18, 0.20],
+      printed: [0.90, 0.91, 0.92],                 // white printed arm parts
+      holder: [0.008, 0.184, 0.286],               // motor holders, #022F49
+      motor: [0.07, 0.07, 0.08],                   // black STS3215 servos
       grid: dark ? [0.22, 0.25, 0.29] : [0.78, 0.81, 0.85],
       reach: dark ? [0.25, 0.42, 0.75] : [0.45, 0.60, 0.90],
       axisX: [0.85, 0.25, 0.25], axisY: [0.2, 0.7, 0.3],
@@ -116,9 +117,15 @@ const Twin = (() => {
       const m = await r.json();
       for (const p of m.parts) {
         const pos = b64(p.pos, Float32Array), idx = b64(p.idx, Uint32Array);
-        parts.push({ link: p.link, vao: vao(pos, idx), count: idx.length, color: COLORS[p.kind] || COLORS.printed });
+        parts.push({ link: p.link, vao: vao(pos, idx), count: idx.length, color: partColor(p) });
       }
       dirty = true;
+    }
+
+    function partColor(p) {
+      if (p.kind === "motor") return COLORS.motor;
+      if (/motor_holder/.test(p.part)) return COLORS.holder;
+      return COLORS.printed;
     }
 
     function setFrames(f) { frames = f; dirty = true; }
