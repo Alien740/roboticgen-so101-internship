@@ -144,3 +144,90 @@ def test_server_endpoints(server):
     code, body = _req(base + "/api/goto", {"pose": "nope"})
     assert code == 400 and b"unknown pose" in body
     assert _req(base + "/static/../server.py")[0] == 404
+
+
+# ------------------------------------------------------------------ subset 2: motions, record / replay
+from so101_dashboard import motions as M
+from so101_dashboard.controller import joint_limits
+
+
+@pytest.mark.parametrize("name", list(M.BUILTINS))
+def test_builtin_motions_are_safe_at_1x(name):
+    problems, stats = M.check(M.BUILTINS[name](), joint_limits(P.load("my_so101")), 1.0)
+    assert problems == [], problems
+    assert stats["min_link_z_mm"] > 100
+
+
+def test_check_refuses_too_fast_playback():
+    problems, _ = M.check(M.scare(), joint_limits(P.load("my_so101")), 2.0)
+    assert any("too fast" in p for p in problems)
+
+
+def test_recording_is_trimmed_and_resampled():
+    still = {j: 0.0 for j in M.JOINTS}
+    samples = [(i * 0.02, dict(still)) for i in range(50)]                         # 1 s still
+    samples += [(1.0 + i * 0.02, {**still, "shoulder_pan": i * 0.5}) for i in range(60)]   # moves 30 deg
+    samples += [(2.2 + i * 0.02, {**still, "shoulder_pan": 29.5}) for i in range(50)]      # 1 s still
+    m = M.from_recording(samples, "t")
+    assert M.duration(m) < 1.6                                                     # still parts gone
+    assert abs(m["t"][1] - 1 / M.RECORD_HZ) < 1e-6
+    assert abs(M.sample(m, M.duration(m))["shoulder_pan"] - 29.5) < 0.2
+
+
+def test_library_save_rename_delete(tmp_path):
+    lib = M.Library(tmp_path)
+    m = M.from_recording([(0, {j: 0.0 for j in M.JOINTS}), (1, {**{j: 0.0 for j in M.JOINTS}, "elbow_flex": 20.0})], "My Move")
+    lib.save(m)
+    assert "My Move" in [x["name"] for x in lib.list()]
+    with pytest.raises(ValueError):
+        lib.save(m)                                     # no silent overwrite
+    lib.rename("My Move", "other")
+    assert lib.get("other")["name"] == "other"
+    with pytest.raises(ValueError):
+        lib.delete("hello")                             # built-ins are protected
+    lib.delete("other")
+    assert [x["name"] for x in lib.list()] == list(M.BUILTINS)
+
+
+def test_play_motion_then_stop(ctl):
+    ctl.play_motion(M.hello(), 1.0)
+    assert ctl.traj["kind"] == "goto" and ctl.queue[0]["kind"] == "play"
+    wait(lambda: ctl.traj is not None and ctl.traj["kind"] == "play", timeout=10)
+    ctl.stop_motion()
+    assert ctl.traj is None and ctl.queue == []
+
+
+def test_jog_cancels_a_playing_motion(ctl):
+    ctl.play_motion(M.dance(), 1.0)
+    ctl.jog_input(joints={"shoulder_pan": 1})
+    assert ctl.traj is None and ctl.queue == []
+
+
+def test_record_and_replay_through_the_api(server, tmp_path):
+    base, app = server
+    app.library = M.Library(tmp_path)
+    _req(base + "/api/connect", {"mode": "sim"})
+    wait(lambda: app.ctl.state == "ready")
+    assert _req(base + "/api/record_start", {})[0] == 200
+    t0 = time.monotonic()
+    while time.monotonic() - t0 < 0.6:
+        app.ctl.jog_input(joints={"shoulder_pan": 1})
+        time.sleep(0.05)
+    time.sleep(0.4)
+    code, body = _req(base + "/api/record_stop", {"name": "hello"})
+    assert code == 400 and b"built-in" in body              # name refused, still recording
+    code, body = _req(base + "/api/record_stop", {"name": "pan"})
+    assert code == 200 and json.loads(body)["name"] == "pan"
+    code, body = _req(base + "/api/motions")
+    assert "pan" in [m["name"] for m in json.loads(body)["motions"]]
+    code, body = _req(base + "/api/motion_preview?name=pan&speed=1")
+    assert code == 200 and json.loads(body)["problems"] == []
+    assert _req(base + "/api/motion_play", {"name": "pan", "speed": 1})[0] == 200
+    wait(lambda: app.ctl.traj is None, timeout=10)
+
+
+def test_hand_guided_recording_switches_torque_off_and_back(ctl):
+    ctl.start_recording(hand_guide=True)
+    wait(lambda: not ctl.torque)
+    ctl.stop_recording()
+    wait(lambda: ctl.torque)

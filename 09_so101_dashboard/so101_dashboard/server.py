@@ -8,7 +8,11 @@ GET  /api/info            profile, OS, ports, joint limits, poses, speed presets
 GET  /api/state           one snapshot
 GET  /api/events          Server-Sent Events: a snapshot every 50 ms (joints, telemetry, link frames)
 GET  /api/twin_mesh       decimated URDF meshes for the 3D twin
-POST /api/<command>       connect, disconnect, estop, reset, speed, torque, jog, set, goto, doctor
+GET  /api/motions         built-in motions + saved recordings
+GET  /api/motion_preview?name=&speed=   link poses over time (ghost preview on the twin)
+POST /api/<command>       connect, disconnect, estop, reset, speed, torque, jog, set, goto, doctor,
+                          motion_play, motion_stop, motion_rename, motion_delete,
+                          record_start, record_stop, record_discard
 
 Every POST must carry the header `X-SO101: 1` (browsers cannot add custom headers cross-site
 without a CORS preflight, which this server never grants, so a random web page cannot drive
@@ -33,7 +37,7 @@ from urllib.parse import parse_qs, urlparse
 
 from so101.hardware.motors import list_ports
 from so101.profile import FRAMEWORK_ROOT
-from . import mesh
+from . import mesh, motions
 from .controller import SPEEDS, Controller
 
 STATIC = Path(__file__).resolve().parent / "static"
@@ -60,6 +64,7 @@ class App:
         self.ctl = Controller(prof).start()
         self.token = token
         self._doctor_lock = threading.Lock()
+        self.library = motions.Library()
 
     def info(self):
         m = self.prof["motion"]
@@ -95,9 +100,36 @@ class App:
             c.goto(body["pose"], body.get("duration"))
         elif name == "doctor":
             return self.doctor()
+        elif name == "motion_play":
+            c.play_motion(self.library.get(body["name"]), body.get("speed", 1.0))
+        elif name == "motion_stop":
+            c.stop_motion()
+        elif name == "motion_rename":
+            self.library.rename(body["name"], body["new"].strip())
+        elif name == "motion_delete":
+            self.library.delete(body["name"])
+        elif name == "record_start":
+            c.start_recording(bool(body.get("hand_guide", False)))
+        elif name == "record_stop":
+            return self.record_stop(body.get("name", ""))
+        elif name == "record_discard":
+            c.stop_recording()
         else:
             raise KeyError(f"unknown command '{name}'")
         return {"ok": True}
+
+    def record_stop(self, name):
+        """Stop recording and save it as a motion (the name is checked BEFORE the data is taken)."""
+        import datetime as _dt
+        name = (name or "").strip() or _dt.datetime.now().strftime("recording %Y-%m-%d %H%M%S")
+        if name in motions.BUILTINS:
+            raise ValueError(f"'{name}' is a built-in motion - choose another name")
+        f = self.library._file(name)                      # raises on a bad name
+        if f.exists():
+            raise ValueError(f"a motion called '{name}' already exists")
+        m = motions.from_recording(self.ctl.stop_recording(), name)
+        self.library.save(m)
+        return {"ok": True, "name": name, "duration_s": round(motions.duration(m), 1), "frames": len(m["t"])}
 
     def doctor(self):
         """Run `so101 doctor` (read-only) in a subprocess. Needs the serial port free."""
@@ -150,6 +182,17 @@ def make_handler(app: App):
                 return self._send(200, m) if m else self._send(404, {"error": "twin mesh not built"})
             if path == "/api/events":
                 return self._events()
+            if path == "/api/motions":
+                return self._send(200, {"motions": app.library.list()})
+            if path == "/api/motion_preview":
+                q = parse_qs(urlparse(self.path).query)
+                try:
+                    m = app.library.get((q.get("name") or [""])[0])
+                    speed = float((q.get("speed") or ["1"])[0])
+                    problems, stats = motions.check(m, app.ctl.limits, speed)
+                    return self._send(200, {**motions.frames_for_preview(m, speed), "problems": problems, "stats": stats})
+                except (ValueError, KeyError) as e:
+                    return self._send(400, {"error": str(e)})
             return self._static(path)
 
         def _static(self, path):

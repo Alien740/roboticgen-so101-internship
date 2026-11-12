@@ -14,5 +14,12 @@ Robot, camera and task problems are covered in
 | Gamepad axes feel wrong | The browser didn't apply the standard mapping | Use an Xbox-style pad in Chrome/Edge; switch joint/tool mode with Back |
 | "gripper is holding something … eased off" | Stall guard: the jaw stopped on an object | Expected; the grip is kept just past contact to avoid an overload trip |
 | 3D twin missing | No WebGL2, or `static/twin_mesh.json` missing | Use Chrome/Edge/Firefox; rebuild with `python -m so101_dashboard.mesh <stl folder>` |
+| Play says "too fast at 2x: … deg/s" | At that playback speed a joint would exceed 300°/s | Pick a slower speed (scare and hello play at 1×) |
+| Play is greyed out | Not connected, E-STOP latched, or torque off | Connect, Reset E-STOP, switch Torque on |
+| Motion stopped half-way | Manual input (slider, key, gamepad), Stop or E-STOP cancels motions | Expected; press Play again |
+| Replay starts with a slow move | It first goes to the motion's start pose at the speed preset | Expected; use Fast preset to shorten it |
+| "the arm did not move during the recording" | Nothing changed by more than 1° | Move the arm more, or check torque/hand-guide setting |
+| "a motion called … already exists" when saving | Names are unique (built-ins too) | Type another name and press Stop & save again (still recording) |
+| Arm went limp when recording started | "Move it by hand" was ticked: torque is off while recording | Expected - hold the arm; torque returns on Stop & save / Discard |
 | Port 8000 already in use | Another dashboard or app is running | Close it, or `so101-dashboard --port 8001` |
 | Phone can't open the `--lan` link | Firewall blocks the port, or the phone is on another network | Allow Python through Windows Firewall (private networks); same Wi-Fi |

@@ -35,16 +35,16 @@ const Twin = (() => {
   in vec3 aPos; uniform mat4 uVP, uModel; out vec3 vW;
   void main() { vec4 w = uModel * vec4(aPos, 1.0); vW = w.xyz; gl_Position = uVP * w; }`;
   const FS = `#version 300 es
-  precision highp float; in vec3 vW; uniform vec3 uColor, uEye; uniform float uLit; out vec4 o;
+  precision highp float; in vec3 vW; uniform vec3 uColor, uEye; uniform float uLit, uAlpha; out vec4 o;
   void main() {
-    if (uLit < 0.5) { o = vec4(uColor, 1.0); return; }
+    if (uLit < 0.5) { o = vec4(uColor, uAlpha); return; }
     vec3 n = normalize(cross(dFdx(vW), dFdy(vW)));
     vec3 v = normalize(uEye - vW);
     if (dot(n, v) < 0.0) n = -n;
     float d = 0.55 * max(dot(n, normalize(vec3(0.4, 0.3, 1.0))), 0.0)
             + 0.30 * max(dot(n, normalize(vec3(-0.6, -0.8, 0.4))), 0.0);
     float rim = pow(1.0 - max(dot(n, v), 0.0), 3.0) * 0.15;
-    o = vec4(uColor * (0.32 + d) + rim, 1.0);
+    o = vec4(uColor * (0.32 + d) + rim, uAlpha);
   }`;
 
   const VIEWS = { iso: [0.75, 0.40, 1.05], front: [0.0, 0.08, 1.0], side: [-1.5708, 0.08, 1.0], top: [0.0, 1.45, 1.1] };
@@ -61,7 +61,7 @@ const Twin = (() => {
     gl.attachShader(prog, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(prog, sh(gl.FRAGMENT_SHADER, FS));
     gl.linkProgram(prog);
     const U = n => gl.getUniformLocation(prog, n);
-    const u = { vp: U("uVP"), model: U("uModel"), color: U("uColor"), eye: U("uEye"), lit: U("uLit") };
+    const u = { vp: U("uVP"), model: U("uModel"), color: U("uColor"), eye: U("uEye"), lit: U("uLit"), alpha: U("uAlpha") };
     const aPos = gl.getAttribLocation(prog, "aPos");
 
     const parts = [];          // {link, vao, count, color}
@@ -129,12 +129,26 @@ const Twin = (() => {
     }
 
     function setFrames(f) { frames = f; dirty = true; }
+
+    // ghost preview: a see-through teal arm playing a motion's poses over the real one
+    let ghost = null;            // {frames: [...], rate, t0, onEnd}
+    const GHOST_COLOR = [0.129, 0.612, 0.737];
+    function playGhost(list, rate, onEnd) { ghost = { frames: list, rate, t0: performance.now(), onEnd }; dirty = true; }
+    function stopGhost() { if (ghost) { const cb = ghost.onEnd; ghost = null; dirty = true; cb && cb(); } }
+    function ghostFrame() {
+      if (!ghost) return null;
+      const i = Math.floor((performance.now() - ghost.t0) / 1000 * ghost.rate);
+      if (i >= ghost.frames.length) { stopGhost(); return null; }
+      dirty = true;
+      return ghost.frames[i];
+    }
     function setView(name) { const v = VIEWS[name]; if (v) { [cam.yaw, cam.pitch, cam.dist] = v; dirty = true; } }
 
     function draw() {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const w = Math.round(canvas.clientWidth * dpr), h = Math.round(canvas.clientHeight * dpr);
       if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; dirty = true; }
+      const gf = ghostFrame();
       if (!dirty) return;
       dirty = false;
       gl.viewport(0, 0, w, h);
@@ -152,6 +166,7 @@ const Twin = (() => {
       gl.uniform3fv(u.eye, eye);
 
       gl.uniform1f(u.lit, 0);
+      gl.uniform1f(u.alpha, 1);
       gl.uniformMatrix4fv(u.model, false, M.I);
       for (const l of lines) { gl.uniform3fv(u.color, l.color); gl.bindVertexArray(l.vao); gl.drawArrays(gl.LINES, 0, l.count); }
 
@@ -165,6 +180,20 @@ const Twin = (() => {
           gl.bindVertexArray(p.vao);
           gl.drawElements(gl.TRIANGLES, p.count, gl.UNSIGNED_INT, 0);
         }
+      }
+      if (gf) {
+        gl.uniform1f(u.lit, 1);
+        gl.uniform1f(u.alpha, 0.38);
+        gl.uniform3fv(u.color, GHOST_COLOR);
+        gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false);
+        for (const p of parts) {
+          const T = gf[p.link];
+          if (!T) continue;
+          gl.uniformMatrix4fv(u.model, false, T);
+          gl.bindVertexArray(p.vao);
+          gl.drawElements(gl.TRIANGLES, p.count, gl.UNSIGNED_INT, 0);
+        }
+        gl.depthMask(true); gl.disable(gl.BLEND);
       }
       gl.bindVertexArray(null);
     }
@@ -184,7 +213,7 @@ const Twin = (() => {
     }, { passive: false });
 
     (function loop() { draw(); requestAnimationFrame(loop); })();
-    return { load, setFrames, setView };
+    return { load, setFrames, setView, playGhost, stopGhost };
   }
 
   return { create };

@@ -12,9 +12,12 @@ description: Start and support the SO-101 web dashboard (3D twin, joint sliders,
    move the arm; pose buttons, sliders, jog, keyboard and gamepad do.
 3. Never press motion controls on the person's behalf without their go-ahead. E-STOP (Space/Esc,
    gamepad B) is always safe to press.
-4. `so101 doctor` and every task need the serial port: ask the person to press **Park & disconnect**
+4. Motions tab: hello / scare / dance + recordings; Preview is safe (ghost on the twin only), Play
+   moves the arm. Record tab: "Move it by hand" switches torque off - the person must hold the arm.
+   Recordings are saved in `09_so101_dashboard/motions/`.
+5. `so101 doctor` and every task need the serial port: ask the person to press **Park & disconnect**
    (or stop the server) first. The dashboard's Status tab has its own Run doctor button.
-5. Problems: see `docs/TROUBLESHOOTING.md` in `09_so101_dashboard`. The server prints
+6. Problems: see `docs/TROUBLESHOOTING.md` in `09_so101_dashboard`. The server prints
    tracebacks to its console; warnings also appear under the 3D twin.
-6. After code changes: `python -m pytest -q` in `09_so101_dashboard` (tests/test_dashboard.py drives the simulated arm
+7. After code changes: `python -m pytest -q` in `09_so101_dashboard` (tests/test_dashboard.py drives the simulated arm
    and the HTTP API).

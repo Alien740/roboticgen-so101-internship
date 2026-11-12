@@ -59,8 +59,8 @@
     <nav class="tabs" role="tablist">
       <button class="tab on" data-tab="manual">Manual</button>
       <button class="tab" data-tab="status">Status</button>
-      <button class="tab soon" disabled title="subset 2">Motions</button>
-      <button class="tab soon" disabled title="subset 2">Record</button>
+      <button class="tab" data-tab="motions">Motions</button>
+      <button class="tab" data-tab="record">Record</button>
       <button class="tab soon" disabled title="subset 3">Tasks</button>
       <button class="tab soon" disabled title="subset 4">Draw</button>
       <button class="tab soon" disabled title="subset 3">Calibrate</button>
@@ -120,6 +120,46 @@
       </div>
     </div>
 
+    <div class="tabpane" id="tab-motions" hidden>
+      <div class="row wrap spread">
+        <h3>Playback speed</h3>
+        <div class="seg small" id="playSpeed">
+          <button data-speed="0.5">0.5×</button>
+          <button data-speed="1" class="on">1×</button>
+          <button data-speed="1.5">1.5×</button>
+          <button data-speed="2">2×</button>
+        </div>
+      </div>
+      <div id="playing" class="playing" hidden>
+        <span id="playingText">Playing…</span>
+        <button class="btn" id="btnStopMotion">Stop</button>
+      </div>
+      <p class="muted">Each move is checked before it plays (joint limits, no joint faster than 300°/s;
+        built-ins also stay at least 4 cm above the table). It first goes to its start pose at the chosen
+        speed preset; any manual input, Stop or E-STOP cancels it.
+        <b>Preview</b> plays a see-through copy on the 3D twin without moving the arm.</p>
+      <h3>Built-in</h3>
+      <ul id="builtinList" class="motion-list"></ul>
+      <h3>Your recordings</h3>
+      <ul id="savedList" class="motion-list"></ul>
+      <p id="savedEmpty" class="muted">None yet – make one in the Record tab.</p>
+    </div>
+
+    <div class="tabpane" id="tab-record" hidden>
+      <p class="muted">Records what the arm does – moved by hand, or driven with the sliders, keyboard or
+        gamepad – and saves it as a motion you can replay (in the Motions tab). Still moments at the start
+        and end are trimmed automatically. Up to 3 minutes.</p>
+      <label class="toggle"><input type="checkbox" id="recHand"> <span>Move it by hand (torque off while recording)</span></label>
+      <p class="muted small-note">The arm goes limp when recording starts – <b>hold it first</b>. Torque comes back on when you stop.</p>
+      <label class="field">Name <input type="text" id="recName" maxlength="40" placeholder="e.g. pick and wave"></label>
+      <div class="row wrap rec-buttons">
+        <button class="btn primary" id="btnRecStart">● Start recording</button>
+        <button class="btn" id="btnRecStop" hidden>■ Stop &amp; save</button>
+        <button class="btn" id="btnRecDiscard" hidden>Discard</button>
+      </div>
+      <div id="recStatus" class="rec-status" hidden><span class="rec-dot"></span><span id="recText"></span></div>
+    </div>
+
     <div class="tabpane" id="tab-status" hidden>
       <h3>Motors</h3>
       <table class="motors">
@@ -141,5 +181,6 @@
 <div id="toast" class="toast" hidden></div>
 <script src="twin.js"></script>
 <script src="app.js"></script>
+<script src="motions.js"></script>
 </body>
 </html>

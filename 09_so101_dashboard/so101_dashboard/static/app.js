@@ -134,6 +134,7 @@ function render() {
   $("#warnings").innerHTML = S.warnings.slice().reverse().map(w =>
     `<li><time>${new Date(w.t * 1000).toLocaleTimeString()}</time>${escapeHtml(w.msg)}</li>`).join("");
   renderMotors();
+  if (typeof renderMotions === "function") renderMotions();
 }
 
 function renderMotors() {

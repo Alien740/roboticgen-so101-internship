@@ -4,9 +4,9 @@ Inputs (any thread, e.g. HTTP handlers) only change small pieces of state under 
 the loop thread is the only code that touches the backend (the serial bus is not thread-safe).
 
 Each tick (RATE_HZ):
-    measured <- backend.read()
-    target   <- active input: trajectory (pose buttons) | jog velocity (keys, gamepad,
-                Cartesian pad) | absolute value (sliders)
+    measured <- backend.read()            (also appended to the recording, if one is running)
+    target   <- active input: trajectory (pose buttons, motions/replays) | jog velocity (keys,
+                gamepad, Cartesian pad) | absolute value (sliders)
     goal     <- target, rate-limited by the speed preset and clamped to joint limits
     backend.write(goal)
 
@@ -18,6 +18,9 @@ Safety:
 - gripper stall guard: holding goal 0 on an object is an endless stall that trips the servo's
   overload protection (power cycle needed), so after a stall the goal is eased to just past contact.
 - Cartesian jog refuses to go below the table or beyond reach instead of guessing.
+- motions and replays are checked first (motions.check: limits, table clearance, joint speed at
+  the chosen playback speed), start with a move to their first pose at the preset speed, and any
+  manual input, Stop or E-STOP cancels them.
 """
 from __future__ import annotations
 
@@ -30,7 +33,7 @@ import traceback
 import numpy as np
 
 from so101 import kinematics as K
-from . import backends
+from . import backends, motions
 from .frames import link_frames
 
 RATE_HZ = 50
@@ -43,6 +46,8 @@ SPEEDS = {   # joint deg/s, Cartesian m/s, gripper units/s
 BOOST = 2.0                      # Shift / gamepad Y
 TABLE_Z = 0.005                  # Cartesian jog keeps the tool point this far above the table
 STALL_S = 1.0
+PLAY_RATE = {"joint": 400.0, "grip": 600.0}     # rate limit while a checked motion plays (deg/s)
+MAX_RECORD_S = 180.0
 
 
 def joint_limits(prof):
@@ -96,7 +101,10 @@ class Controller:
         self.measured = {}
         self.goal = {}
         self.target = {}
-        self.traj = None                     # {start, end, t0, dur, name, then}
+        self.traj = None                     # goto: {kind, start, end, t0, dur, name, then}
+                                             # play: {kind, motion, speed, t0, dur, name}
+        self.queue = []                      # trajectories to run after the current one
+        self.rec = None                      # {t0, samples, torque_off}
         self.jog = {"joints": {}, "cart": {}, "boost": False, "t": 0.0, "source": ""}
         self._pitch_hold = None
         self._stall = {"since": None, "pos": None}
@@ -150,7 +158,7 @@ class Controller:
     def emergency_stop(self):
         with self.lock:
             self.estop = True
-            self.traj = None
+            self.traj, self.queue = None, []
             self.jog["joints"], self.jog["cart"] = {}, {}
             self.owner = "E-STOP"
             if self.state == "parking":
@@ -190,7 +198,7 @@ class Controller:
             if not cart:
                 self._pitch_hold = None
             if joints or cart:
-                self.traj = None
+                self.traj, self.queue = None, []
                 self.owner = f"manual:{source}"
             self.jog.update(joints=joints, cart=cart, boost=bool(boost), t=time.monotonic(), source=source)
 
@@ -198,7 +206,7 @@ class Controller:
         """Absolute targets (deg / gripper 0-100); the arm moves there at the preset speed."""
         with self.lock:
             self._require_ready(motion=True)
-            self.traj = None
+            self.traj, self.queue = None, []
             for k, v in values.items():
                 if k in self.limits:
                     self.target[k] = self._clamp(k, float(v))
@@ -210,6 +218,51 @@ class Controller:
             self._require_ready(motion=True)
             end = self._pose(pose) if isinstance(pose, str) else {k: float(v) for k, v in pose.items()}
             self._start_traj(end, pose if isinstance(pose, str) else "pose", duration=duration)
+
+    def play_motion(self, motion, speed=1.0):
+        """Move to the motion's first pose (preset speed), then play it at `speed` x."""
+        speed = float(speed)
+        if not 0.25 <= speed <= 2.0:
+            raise ValueError("playback speed must be 0.25x - 2x")
+        problems, _ = motions.check(motion, self.limits, speed)
+        if problems:
+            raise ValueError("; ".join(problems))
+        with self.lock:
+            self._require_ready(motion=True)
+            self._start_traj(motions.sample(motion, 0.0), f"to start of {motion['name']}")
+            self.queue = [{"kind": "play", "motion": motion, "speed": speed, "name": motion["name"],
+                           "dur": motions.duration(motion) / speed}]
+
+    def stop_motion(self):
+        """Stop a pose move / motion / replay and hold where the arm is commanded (not an E-STOP)."""
+        with self.lock:
+            self.traj, self.queue = None, []
+            self.target = dict(self.goal)
+            if self.owner.startswith(("pose:", "motion:")):
+                self.owner = "idle"
+
+    def start_recording(self, hand_guide=False):
+        """Record the measured joints until stop_recording(). hand_guide: torque off so the
+        person can move the arm by hand (they must hold it first); torque returns on stop."""
+        with self.lock:
+            self._require_ready()
+            if self.rec is not None:
+                raise RuntimeError("already recording")
+            if self.estop:
+                raise RuntimeError("E-STOP is latched - press Reset first")
+            self.rec = {"t0": time.monotonic(), "samples": [], "torque_off": bool(hand_guide) and self.torque}
+            if self.rec["torque_off"]:
+                self._ops.append(("torque", False))
+
+    def stop_recording(self):
+        """Returns the samples [(t, joints)]; switches torque back on if recording switched it off."""
+        with self.lock:
+            if self.rec is None:
+                raise RuntimeError("not recording")
+            rec, self.rec = self.rec, None
+            if rec["torque_off"] and self.backend is not None:
+                self._ops.append(("torque", True))
+        return rec["samples"]
 
     # ================================================================ state for the UI
     def snapshot(self, frames=True):
@@ -224,8 +277,12 @@ class Controller:
                 "telemetry": getattr(self.backend, "telemetry", None),
                 "warnings": list(self.warnings)[-5:],
                 "traj": None if self.traj is None else {
-                    "name": self.traj["name"],
-                    "progress": round(min(1.0, (time.monotonic() - self.traj["t0"]) / self.traj["dur"]), 2)},
+                    "name": self.traj["name"], "kind": self.traj["kind"],
+                    "progress": round(min(1.0, (time.monotonic() - self.traj["t0"]) / self.traj["dur"]), 2),
+                    "next": [q["name"] for q in self.queue]},
+                "recording": None if self.rec is None else {
+                    "elapsed_s": round(time.monotonic() - self.rec["t0"], 1), "samples": len(self.rec["samples"]),
+                    "hand_guide": self.rec["torque_off"], "max_s": MAX_RECORD_S},
             }
             measured = dict(self.measured)
         if measured:
@@ -268,8 +325,9 @@ class Controller:
         delta = max([abs(end[k] - start.get(k, end[k])) for k in end] + [0.0])
         if duration is None:
             duration = max(1.0, delta / (SPEEDS[self.speed]["joint"] * 1.5))
-        self.traj = {"start": start, "end": end, "t0": time.monotonic(), "dur": float(duration),
-                     "name": name, "then": then}
+        self.traj = {"kind": "goto", "start": start, "end": end, "t0": time.monotonic(),
+                     "dur": float(duration), "name": name, "then": then}
+        self.queue = []
         self.jog["joints"], self.jog["cart"] = {}, {}
         self.owner = f"pose:{name}"
 
@@ -322,6 +380,7 @@ class Controller:
                 finally:
                     with self.lock:
                         self.backend, self.state, self.traj = None, "disconnected", None
+                        self.queue, self.rec = [], None
                         self.measured, self.goal, self.target = {}, {}, {}
                         self.owner = "idle"
             elif op == "torque":
@@ -344,6 +403,12 @@ class Controller:
         then = None
         with self.lock:
             self.measured = m
+            if self.rec is not None:
+                el = time.monotonic() - self.rec["t0"]
+                if el <= MAX_RECORD_S:
+                    self.rec["samples"].append((el, dict(m)))
+                else:
+                    self._note(f"recording is full ({MAX_RECORD_S:.0f} s) - press Stop & save")
             if not self.torque:
                 self.goal, self.target = dict(m), dict(m)      # hand-guiding: follow the arm
                 goal = None
@@ -365,14 +430,24 @@ class Controller:
         if self.traj is not None:
             tr = self.traj
             u = min(1.0, (time.monotonic() - tr["t0"]) / tr["dur"])
-            s = 0.5 - 0.5 * math.cos(math.pi * u)
-            for k, v in tr["end"].items():
-                a = tr["start"].get(k, v)
-                self.target[k] = a + (v - a) * s
+            if tr["kind"] == "play":
+                pose = motions.sample(tr["motion"], u * motions.duration(tr["motion"]))
+                for k, v in pose.items():
+                    self.target[k] = self._clamp(k, v)
+            else:
+                s = 0.5 - 0.5 * math.cos(math.pi * u)
+                for k, v in tr["end"].items():
+                    a = tr["start"].get(k, v)
+                    self.target[k] = a + (v - a) * s
             if u >= 1.0:
+                if self.queue:
+                    self.traj = self.queue.pop(0)
+                    self.traj["t0"] = time.monotonic()
+                    self.owner = f"motion:{self.traj['name']}"
+                    return None
                 self.traj = None
                 self.owner = "idle"
-                return tr["then"]
+                return tr.get("then")
             return None
         if time.monotonic() - self.jog["t"] > JOG_TIMEOUT_S:
             self.jog["joints"], self.jog["cart"] = {}, {}
@@ -409,9 +484,12 @@ class Controller:
     def _rate_limit(self, dt):
         sp = SPEEDS[self.speed]
         fast = self.traj is not None or bool(self.jog["cart"])     # these are already smooth
+        playing = self.traj is not None and self.traj["kind"] == "play"
         for j, tgt in self.target.items():
             rate = sp["grip"] if j == "gripper" else sp["joint"]
-            if fast or self.jog["boost"]:
+            if playing:                                                # checked by motions.check()
+                rate = PLAY_RATE["grip" if j == "gripper" else "joint"]
+            elif fast or self.jog["boost"]:
                 rate *= 4.0 if fast else BOOST
             step = rate * dt
             self.goal[j] = self._clamp(j, self.goal[j] + max(-step, min(step, tgt - self.goal[j])))
