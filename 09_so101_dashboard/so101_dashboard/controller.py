@@ -47,6 +47,7 @@ GRIP_OPEN_MAX = 95.0             # stop the jaw short of its open end stop (see 
 ACCEL_PER_RATE = 4.0             # joints reach full preset speed in 1/4 s and brake to a stop (no jerks)
 HAND_HOLD_M = 0.004              # hand moved less than this (and tilted/turned less than HAND_HOLD_DEG)
 HAND_HOLD_DEG = 4.0              # since the last accepted target = camera noise: the arm holds still
+MIMIC_HOLD_DEG = 1.5             # copied arm joints: smaller changes than this are tracking noise
 READ_MISS_MAX = 10               # consecutive lost position reads (0.2 s) before it counts as an error
 HAND_SPEEDUP = 3.0               # hand following uses the preset joint speed x this (it is pre-smoothed)
 HAND_TIMEOUT_S = 0.5             # no hand frame for this long -> the arm holds where it is
@@ -240,7 +241,13 @@ class Controller:
         if still:
             xyz, pitch = held
         sol, err = (seed, 0.0) if still else K.ik_local(xyz, seed, pitch)
-        ok = err < HAND_MAX_ERR and all(self.limits[j][0] <= sol[j] <= self.limits[j][1] for j in K.ARM)
+        edge = False
+        if err >= HAND_MAX_ERR:
+            # that tool angle can't be had there: keep the position, let the angle give, and if the
+            # point itself is out of reach go to the closest pose (the arm stops at the edge, not dead)
+            sol, err = K.ik_local(xyz, seed, pitch, w_pitch=0.3)
+            edge = err >= HAND_MAX_ERR
+        ok = all(self.limits[j][0] <= sol[j] <= self.limits[j][1] for j in K.ARM)
         with self.lock:
             self._require_ready(motion=True)
             self.traj = None
@@ -251,20 +258,70 @@ class Controller:
                 for j in K.ARM:
                     self.target[j] = self._clamp(j, sol[j])
             elif not ok:
-                self._note("hand is outside the arm's reach - holding the last pose")
+                self._note("that pose needs a joint past its limit - holding the last pose")
+            if edge:
+                self._note("hand is beyond the arm's reach - the arm stays at the edge")
             if roll is not None and abs(float(roll) - self.target.get("wrist_roll", 0.0)) >= HAND_HOLD_DEG:
                 self.target["wrist_roll"] = self._clamp("wrist_roll", float(roll))
             if grip is not None:
-                g = self._clamp("gripper", float(grip))
-                floor = self._hand["grip_floor"]
-                if floor is not None:                         # stall guard eased a grip: don't re-squeeze
-                    if g > floor + 10.0:
-                        self._hand["grip_floor"] = None
-                    else:
-                        g = max(g, floor)
-                self.target["gripper"] = g
+                self._grip_follow(grip)
             self.owner = "hand"
-        return {"pan": pan, "r": r, "z": z, "pitch": pitch, "reachable": ok}
+        return {"pan": pan, "r": r, "z": z, "pitch": pitch, "reachable": bool(ok and not edge)}
+
+    def mimic_input(self, joints):
+        """Copy a tracked human arm: absolute joint targets (deg, gripper 0-100), sent at ~10-30 Hz
+        by the browser's body tracking. Same path, speed and limits as hand following; joints that
+        moved less than MIMIC_HOLD_DEG keep their target (tracking noise)."""
+        with self.lock:
+            self._require_ready(motion=True)
+            self.traj = None
+            self.jog["joints"], self.jog["cart"] = {}, {}
+            self._hand["t"] = time.monotonic()
+            cand = dict(self.target)
+            for k, v in joints.items():
+                if k == "gripper":
+                    self._grip_follow(v)
+                elif k in self.limits:
+                    v = self._clamp(k, float(v))
+                    if abs(v - cand.get(k, v)) >= MIMIC_HOLD_DEG or k not in cand:
+                        cand[k] = v
+            cand["gripper"] = self.target.get("gripper", 0.0)
+            self.target = self._above_table(self.target, cand)
+            self.owner = "mimic"
+        return {k: round(self.target[k], 1) for k in joints if k in self.target}
+
+    def _above_table(self, cur, cand):
+        """cand, or the furthest point toward it (joint-space line from cur) that keeps the tool
+        above the table - the arm slides to a stop at the table instead of pushing into it. A cur
+        that is already low (folded home rests the tool at z<0) may still move up."""
+        z = lambda a: K.fk(a)[2, 3]
+        zc = z(cand)
+        if zc >= TABLE_Z or zc >= z(cur):
+            return cand
+        if z(cur) < TABLE_Z:
+            self._note("stopped at the table")
+            return dict(cur)
+        lo, hi = 0.0, 1.0
+        for _ in range(8):
+            mid = (lo + hi) / 2
+            if z({k: cur[k] + (cand[k] - cur[k]) * mid for k in cand}) >= TABLE_Z:
+                lo = mid
+            else:
+                hi = mid
+        self._note("stopped at the table")
+        return {k: cur[k] + (cand[k] - cur[k]) * lo for k in cand}
+
+    def _grip_follow(self, grip):
+        """Gripper target from a tracked hand (lock held). After the stall guard eased a grip the
+        hand can't re-squeeze until it opens again (an endless stall trips the overload)."""
+        g = self._clamp("gripper", float(grip))
+        floor = self._hand["grip_floor"]
+        if floor is not None:
+            if g > floor + 10.0:
+                self._hand["grip_floor"] = None
+            else:
+                g = max(g, floor)
+        self.target["gripper"] = g
 
     def goto(self, pose, duration=None):
         """Smooth move to a profile pose name or a {joint: deg} dict (joints left out stay)."""
@@ -489,7 +546,7 @@ class Controller:
     def _rate_limit(self, dt):
         sp = SPEEDS[self.speed]
         fast = self.traj is not None or bool(self.jog["cart"])     # these are already smooth
-        hand = self.owner == "hand"
+        hand = self.owner in ("hand", "mimic")
         for j, tgt in self.target.items():
             rate = sp["grip"] if j == "gripper" else sp["joint"]
             if hand:
@@ -529,7 +586,7 @@ class Controller:
             self._vel["gripper"] = 0.0
             goal["gripper"] = eased
             self.jog["joints"].pop("gripper", None)
-            if self.owner == "hand":
+            if self.owner in ("hand", "mimic"):
                 self._hand["grip_floor"] = eased
             st["since"], st["pos"] = None, None
             self._note(f"gripper is holding something at {p:.0f} - eased off to protect the motor")

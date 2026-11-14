@@ -137,7 +137,11 @@
       <pre id="doctorOut" class="console" hidden></pre>
     </div>
     <div class="tabpane" id="tab-hand" hidden>
-      <h3>Hand control <small>the arm mimics your hand through this computer's camera</small></h3>
+      <h3>Hand / arm control <small>the robot follows you through this computer's camera</small></h3>
+      <div class="seg" id="followMode" role="radiogroup" aria-label="What the robot follows">
+        <button data-mode="arm" class="on">My whole arm</button>
+        <button data-mode="hand">My hand</button>
+      </div>
       <div class="hand-view">
         <video id="handVideo" playsinline muted></video>
         <canvas id="handCanvas"></canvas>
@@ -146,11 +150,11 @@
       <div class="row wrap">
         <select id="handCamSel" class="btn" title="which camera to use"><option value="">Default camera</option></select>
         <button class="btn" id="handCam">Start camera</button>
-        <button class="btn" id="handNeutral" disabled title="hold your hand where the arm's middle pose should be">Set neutral</button>
-        <label class="toggle"><input type="checkbox" id="handFollow" disabled> <span><b>Follow my hand</b> (arm moves)</span></label>
+        <button class="btn" id="handNeutral" disabled title="hand mode: tie this hand pose to where the arm is now">Set neutral</button>
+        <label class="toggle"><input type="checkbox" id="handFollow" disabled> <span><b>Follow me</b> (robot moves)</span></label>
       </div>
       <dl class="kv hand-read">
-        <dt>hand</dt><dd id="hrSeen">–</dd>
+        <dt>tracking</dt><dd id="hrSeen">–</dd>
         <dt>base pan</dt><dd id="hrPan">–</dd>
         <dt>reach</dt><dd id="hrR">–</dd>
         <dt>height</dt><dd id="hrZ">–</dd>
@@ -158,33 +162,58 @@
         <dt>wrist roll</dt><dd id="hrRoll">–</dd>
         <dt>gripper</dt><dd id="hrGrip">–</dd>
       </dl>
-      <h3>How to move</h3>
-      <table class="keys">
-        <tr><td>hand left / right</td><td>base turns</td></tr>
-        <tr><td>hand up / down</td><td>tool up / down</td></tr>
-        <tr><td>hand toward / away from camera</td><td>tool reaches out / pulls back</td></tr>
-        <tr><td>tilt fingers toward / away from camera</td><td>tool points down / up</td></tr>
-        <tr><td>rotate hand (like a doorknob)</td><td>wrist roll</td></tr>
-        <tr><td>make a fist / open your hand</td><td>gripper closes / opens (or pinch, see Tuning)</td></tr>
-        <tr><td>hand leaves the picture</td><td>arm holds still</td></tr>
-        <tr><td><kbd>Space</kbd> / <kbd>Esc</kbd></td><td><b>E-STOP</b> (always)</td></tr>
-      </table>
+
+      <div id="armHelp">
+        <h3>How to move <small>stand back so the camera sees your shoulders and your whole arm</small></h3>
+        <table class="keys">
+          <tr><td>hand out in front / close to your body</td><td>gripper reaches out (33 cm) / comes near the base (15 cm)</td></tr>
+          <tr><td>hand down at your hip / up at your shoulder</td><td>gripper at the table / 20 cm up</td></tr>
+          <tr><td>hand to your left / right</td><td>base turns</td></tr>
+          <tr><td>hand pointing down / level</td><td>gripper points down / forward</td></tr>
+          <tr><td>turn your hand (palm down ↔ sideways)</td><td>wrist roll</td></tr>
+          <tr><td>make a fist / open your hand</td><td>gripper closes / opens</td></tr>
+          <tr><td>arm leaves the picture</td><td>robot holds still</td></tr>
+          <tr><td><kbd>Space</kbd> / <kbd>Esc</kbd></td><td><b>E-STOP</b> (always)</td></tr>
+        </table>
+        <p class="muted">Your reach is scaled onto the robot's picking area (15–33 cm out, table to 25 cm up), measured in
+          your own arm lengths. The gripper stops at the edge of reach and never goes below the table.</p>
+        <div class="row wrap">
+          <label class="toggle">Arm <select id="armSide" class="btn"><option value="right">right</option><option value="left">left</option></select></label>
+        </div>
+      </div>
+
+      <div id="handHelp" hidden>
+        <h3>How to move</h3>
+        <table class="keys">
+          <tr><td>hand left / right</td><td>base turns</td></tr>
+          <tr><td>hand up / down</td><td>tool up / down</td></tr>
+          <tr><td>hand toward / away from camera</td><td>tool reaches out / pulls back</td></tr>
+          <tr><td>tilt fingers toward / away from camera</td><td>tool points down / up</td></tr>
+          <tr><td>rotate hand (like a doorknob)</td><td>wrist roll</td></tr>
+          <tr><td>make a fist / open your hand</td><td>gripper closes / opens</td></tr>
+          <tr><td>hand leaves the picture</td><td>arm holds still</td></tr>
+          <tr><td><kbd>Space</kbd> / <kbd>Esc</kbd></td><td><b>E-STOP</b> (always)</td></tr>
+        </table>
+        <div class="sliders">
+          <div class="slider"><label for="hgPan">Pan range</label><div class="track"><input type="range" id="hgPan" min="60" max="240" value="150"></div><output>150</output></div>
+          <div class="slider"><label for="hgZ">Height range</label><div class="track"><input type="range" id="hgZ" min="10" max="60" value="35"></div><output>35</output></div>
+          <div class="slider"><label for="hgR">Reach range</label><div class="track"><input type="range" id="hgR" min="5" max="50" value="25"></div><output>25</output></div>
+        </div>
+        <label class="toggle"><input type="checkbox" id="hgPitchOff"> <span>Lock tool pitch</span></label>
+      </div>
+
       <h3>Tuning</h3>
       <div class="sliders">
-        <div class="slider"><label for="hgPan">Pan range</label><div class="track"><input type="range" id="hgPan" min="60" max="240" value="150"></div><output>150</output></div>
-        <div class="slider"><label for="hgZ">Height range</label><div class="track"><input type="range" id="hgZ" min="10" max="60" value="35"></div><output>35</output></div>
-        <div class="slider"><label for="hgR">Reach range</label><div class="track"><input type="range" id="hgR" min="5" max="50" value="25"></div><output>25</output></div>
         <div class="slider"><label for="hgSmooth">Smoothing</label><div class="track"><input type="range" id="hgSmooth" min="0" max="95" value="70"></div><output>70</output></div>
       </div>
       <div class="row wrap">
         <label class="toggle">Gripper
-          <select id="hgGrip" class="btn"><option value="fist">whole hand: fist = close</option><option value="pinch">pinch thumb + index</option></select></label>
+          <select id="hgGrip" class="btn"><option value="fist">fist = close</option><option value="pinch">pinch thumb + index</option></select></label>
         <label class="toggle"><input type="checkbox" id="hgMirror"> <span>I face the robot (mirror left/right)</span></label>
         <label class="toggle"><input type="checkbox" id="hgRollOff"> <span>Lock wrist roll</span></label>
-        <label class="toggle"><input type="checkbox" id="hgPitchOff"> <span>Lock tool pitch</span></label>
       </div>
-      <p class="muted">Start on <b>Slow</b>. The hand model loads from the internet the first time (jsdelivr / Google).
-        Limits, E-STOP and the gripper stall guard still apply.</p>
+      <p class="muted">Start on <b>Slow</b>. The tracking models load from the internet the first time (jsdelivr / Google).
+        Limits, E-STOP, the table guard and the gripper stall guard always apply.</p>
     </div>
   </section>
 </main>

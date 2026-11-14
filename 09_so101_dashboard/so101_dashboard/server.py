@@ -8,7 +8,7 @@ GET  /api/info            profile, OS, ports, joint limits, poses, speed presets
 GET  /api/state           one snapshot
 GET  /api/events          Server-Sent Events: a snapshot every 50 ms (joints, telemetry, link frames)
 GET  /api/twin_mesh       decimated URDF meshes for the 3D twin
-POST /api/<command>       connect, disconnect, estop, reset, speed, torque, jog, set, goto, hand, doctor
+POST /api/<command>       connect, disconnect, estop, reset, speed, torque, jog, set, goto, hand, mimic, doctor
 
 Every POST must carry the header `X-SO101: 1` (browsers cannot add custom headers cross-site
 without a CORS preflight, which this server never grants, so a random web page cannot drive
@@ -96,6 +96,8 @@ class App:
         elif name == "hand":
             return {"ok": True, **c.hand_input(body["pan"], body["r"], body["z"], body["pitch"],
                                                body.get("roll"), body.get("grip"))}
+        elif name == "mimic":
+            return {"ok": True, "target": c.mimic_input(body["joints"])}
         elif name == "doctor":
             return self.doctor()
         else:

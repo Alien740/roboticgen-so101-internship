@@ -102,6 +102,30 @@ def test_hand_input_reaches_target_and_clamps(ctl):
     assert ctl.snapshot()["target"]["wrist_roll"] == 75.0
 
 
+def test_mimic_copies_joints_ignores_noise_and_clamps(ctl):
+    g = ctl.snapshot()["goal"]
+    out = ctl.mimic_input({"shoulder_pan": g["shoulder_pan"] + 20, "elbow_flex": g["elbow_flex"] - 15, "gripper": 60})
+    assert abs(out["shoulder_pan"] - (g["shoulder_pan"] + 20)) < 0.1 and ctl.snapshot()["owner"] == "mimic"
+    before = ctl.snapshot()["target"]["shoulder_pan"]
+    ctl.mimic_input({"shoulder_pan": before + 0.8})            # tracking noise: ignored
+    assert ctl.snapshot()["target"]["shoulder_pan"] == before
+    ctl.mimic_input({"wrist_roll": 150, "gripper": 100})        # clamped to the free range / short of the stop
+    t = ctl.snapshot()["target"]
+    assert t["wrist_roll"] == 75.0 and t["gripper"] == 95.0
+    ctl.emergency_stop()
+    with pytest.raises(RuntimeError):
+        ctl.mimic_input({"shoulder_pan": 0})
+
+
+def test_mimic_never_drives_the_tool_into_the_table(ctl):
+    ctl.goto(WORK, duration=0.5); wait(lambda: ctl.traj is None)
+    low = {"shoulder_lift": 90.0, "elbow_flex": 0.0, "wrist_flex": 60.0}    # tool would be 12 cm below z=0
+    assert K.fk({**WORK, **low})[2, 3] < 0
+    ctl.mimic_input(low)
+    t = ctl.snapshot()["target"]
+    assert K.fk(t)[2, 3] >= 0.005 - 1e-4                                    # stopped at the table
+
+
 def test_hand_input_refused_during_estop(ctl):
     ctl.emergency_stop()
     with pytest.raises(RuntimeError):
