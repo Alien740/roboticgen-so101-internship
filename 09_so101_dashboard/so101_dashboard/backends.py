@@ -135,7 +135,7 @@ class RealBackend:
         elif reg == "Present_Temperature":
             t["temp_c"] = int(v)
         elif reg == "Present_Load":
-            t["load"] = (-1 if v & 0x400 else 1) * (v & 0x3FF)
+            t["load"] = int(v)                 # lerobot already decoded the sign-magnitude bit
         elif reg == "Status":
             t["faults"] = [name for bit, name in STATUS_BITS.items() if v & bit]
         else:
