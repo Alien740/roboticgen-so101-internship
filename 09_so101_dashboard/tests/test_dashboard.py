@@ -309,3 +309,61 @@ def test_task_runner_drives_a_framework_task(ctl):
         time.sleep(1.5)
     wait(lambda: tr.state()["state"] == "ended", timeout=30)
     assert any("DEMO" in l or "demo" in l.lower() for l in tr.state()["output"])
+
+
+# ---------------------------------------------------------------- AI tab (scripted stand-in for Claude)
+class _FakeClaude:
+    """Replays scripted assistant turns; records what the agent sent back."""
+    def __init__(self, turns):
+        from types import SimpleNamespace as NS
+        self.NS, self.turns, self.sent = NS, list(turns), []
+        self.beta = NS(messages=NS(create=self._create))
+
+    def _create(self, **kw):
+        self.sent.append(kw)
+        NS = self.NS
+        blocks, stop = self.turns.pop(0)
+        content = [NS(type="text", text=b) if isinstance(b, str) else
+                   NS(type="tool_use", id=f"t{len(self.sent)}{i}", name=b[0], input=b[1]) for i, b in enumerate(blocks)]
+        return NS(content=content, stop_reason=stop)
+
+
+def test_ai_agent_runs_robot_tools_through_the_controller(ctl):
+    from so101_dashboard.ai import AIAgent, TOOLS
+    assert all(t["strict"] and t["input_schema"]["additionalProperties"] is False for t in TOOLS)
+    ctl.set_speed("fast")
+    ag = AIAgent(ctl)
+    ag._sdk_problem = lambda: None                                      # no real key needed: scripted
+    ag._client = _FakeClaude([
+        ([("get_state", {})], "tool_use"),
+        ([("move_gripper_to", {"reach_cm": 22, "height_cm": 8, "base_deg": 20, "pointing": "down"}),
+          ("set_gripper", {"percent": 10})], "tool_use"),
+        (["Done: the gripper is over the spot and closed."], "end_turn"),
+    ])
+    ag.ask("move over there and close")
+    wait(lambda: not ag.busy, timeout=40)
+    roles = [m["role"] for m in ag.log]
+    assert roles[0] == "user" and roles[-1] == "assistant", ag.log
+    assert not any(m["role"] == "error" for m in ag.log), ag.log
+    s = ctl.snapshot()
+    x, y, z = (v / 1000 for v in s["tool"]["xyz_mm"])
+    assert abs(math.hypot(x, y) - 0.22) < 0.015 and abs(z - 0.08) < 0.015
+    assert abs(math.degrees(math.atan2(y, x)) - 20) < 3 and s["measured"]["gripper"] < 15
+    sent = ag._client.sent[-1]
+    assert sent["model"] == "claude-opus-5-5" and sent["fallbacks"] == "default"
+    assert ag.messages[-2]["content"][0]["type"] == "tool_result"        # results went back to Claude
+    assert ag.messages[-1]["role"] == "assistant"                       # conversation left valid
+
+
+def test_ai_agent_stops_on_estop(ctl):
+    from so101_dashboard.ai import AIAgent
+    ag = AIAgent(ctl)
+    ag._sdk_problem = lambda: None
+    ag._client = _FakeClaude([([("wait", {"seconds": 0.5})], "tool_use"), ([("go_to_pose", {"name": "ready"})], "tool_use"),
+                              (["never reached"], "end_turn")])
+    ctl.emergency_stop()
+    ag.ask("do things")
+    wait(lambda: not ag.busy, timeout=10)
+    assert any(m["role"] == "error" for m in ag.log)
+    assert not any("never reached" in m["text"] for m in ag.log)
+    assert not ag.messages or ag.messages[-1]["role"] != "user"           # nothing left dangling

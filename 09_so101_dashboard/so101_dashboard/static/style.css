@@ -168,3 +168,12 @@ kbd { display: inline-block; min-width: 20px; text-align: center; padding: 1px 5
 .drawpad .k { width: 54px; color: var(--muted); font-size: 12px; text-transform: uppercase; }
 .drawpad .slider { display: grid; }
 button.btn:disabled { opacity: .45; cursor: not-allowed; }
+
+/* ---------- AI tab */
+.ailog { display: flex; flex-direction: column; gap: 6px; max-height: 420px; overflow: auto; margin: 8px 0; }
+.ailog .m { padding: 8px 11px; border-radius: 10px; font-size: 14px; max-width: 92%; white-space: pre-wrap; }
+.ailog .user { align-self: flex-end; background: var(--accent); color: var(--accent-ink); }
+.ailog .assistant { align-self: flex-start; background: var(--chip); }
+.ailog .tool { align-self: flex-start; font: 12px ui-monospace, monospace; color: var(--muted); padding: 2px 11px; }
+.ailog .error { align-self: flex-start; color: var(--bad); }
+.ailog .busy { align-self: flex-start; color: var(--muted); font-style: italic; }

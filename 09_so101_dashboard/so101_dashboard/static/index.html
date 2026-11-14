@@ -65,7 +65,7 @@
       <button class="tab" data-tab="record">Record</button>
       <button class="tab" data-tab="tasks">Tasks</button>
       <button class="tab" data-tab="calibrate">Calibrate</button>
-      <button class="tab soon" disabled title="subset 5">AI</button>
+      <button class="tab" data-tab="ai">AI</button>
     </nav>
 
     <div class="tabpane" id="tab-manual">
@@ -210,6 +210,29 @@
       <p class="muted">Motor calibration (the joints' zero points) is a terminal step – see CALIBRATE_AND_START.md.
         Vision steps need the overhead camera and macOS camera permission for the app that runs the dashboard.</p>
       <div class="session"></div>
+    </div>
+
+    <div class="tabpane" id="tab-ai" hidden>
+      <h3>AI <small>tell the arm what to do; Claude plans it with safe moves</small></h3>
+      <div id="aiProblem" class="prompt" hidden></div>
+      <div id="aiLog" class="ailog"></div>
+      <div class="row">
+        <input id="aiText" class="btn" style="flex:1" maxlength="1000"
+          placeholder="e.g. wave hello, then pick up the cube 25 cm in front and put it 10 cm to the left">
+        <button class="btn primary" id="aiSend">Send</button>
+        <button class="btn warn" id="aiStop">Stop</button>
+        <button class="btn" id="aiReset" title="forget the conversation">New chat</button>
+      </div>
+      <div class="row wrap" id="aiExamples">
+        <button class="btn ai-ex">Wave hello</button>
+        <button class="btn ai-ex">Go to the ready pose and open the gripper</button>
+        <button class="btn ai-ex">Pick up the cube 22 cm straight ahead and put it 25 cm away, 10 cm to the left</button>
+        <button class="btn ai-ex">Where is the gripper now?</button>
+      </div>
+      <p class="muted">Connect the arm first and start on <b>Slow</b>. Claude (Opus 5.5) can only use the dashboard's own
+        moves – limits, the table floor, the gripper guard and <b>E-STOP</b> (Space) still apply; Stop ends it at the next
+        step. It can't see, so say where objects are (distance from the base, left/right). Needs an Anthropic API key:
+        start the dashboard with <code>ANTHROPIC_API_KEY</code> set.</p>
     </div>
 
     <div class="tabpane" id="tab-status" hidden>

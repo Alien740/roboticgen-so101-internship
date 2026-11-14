@@ -13,6 +13,7 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+ai = ["anthropic>=2.8"]          # AI tab (Claude); everything else needs only the standard library
 
 [project.scripts]
 so101-dashboard = "so101_dashboard.__main__:main"

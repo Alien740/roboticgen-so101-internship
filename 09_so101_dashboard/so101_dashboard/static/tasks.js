@@ -135,3 +135,30 @@ $$('.tab[data-tab="motions"], .tab[data-tab="record"]').forEach(t => t.addEventL
 $$('.tab[data-tab="draw"], .tab[data-tab="tasks"], .tab[data-tab="calibrate"]').forEach(t => t.addEventListener("click", pollTask));
 loadLibrary();
 pollTask();
+
+// ------------------------------------------------------------------ AI (Claude plans with the controller's tools)
+let aiTimer = null, aiSeen = "";
+async function pollAI() {
+  let st;
+  try { st = await (await fetch("/api/ai", { headers: HDR })).json(); } catch (_) { return; }
+  $("#aiProblem").hidden = !st.problem; $("#aiProblem").textContent = st.problem || "";
+  const html = st.log.map(m => `<div class="m ${m.role}">${escapeHtml(m.text)}</div>`).join("")
+    + (st.busy ? `<div class="m busy">working…</div>` : "");
+  if (html !== aiSeen) { aiSeen = html; $("#aiLog").innerHTML = html || `<div class="m busy">Say what the arm should do.</div>`; $("#aiLog").scrollTop = 1e9; }
+  $("#aiSend").disabled = st.busy; $("#aiStop").disabled = !st.busy;
+  clearTimeout(aiTimer);
+  if (!$("#tab-ai").hidden || st.busy) aiTimer = setTimeout(pollAI, st.busy ? 600 : 2500);
+}
+async function aiSend(text) {
+  text = (text ?? $("#aiText").value).trim();
+  if (!text) return;
+  if (!S || S.state !== "ready") { toast("Connect the arm (or the simulated one) first"); return; }
+  try { await api("ai", { op: "ask", text }); $("#aiText").value = ""; } catch (_) { return; }
+  pollAI();
+}
+$("#aiSend").onclick = () => aiSend();
+$("#aiText").addEventListener("keydown", e => { if (e.key === "Enter") aiSend(); });
+$("#aiStop").onclick = () => api("ai", { op: "stop" }).catch(() => {});
+$("#aiReset").onclick = () => api("ai", { op: "reset" }).then(pollAI).catch(() => {});
+$$("#aiExamples .ai-ex").forEach(b => (b.onclick = () => aiSend(b.textContent)));
+$('.tab[data-tab="ai"]').addEventListener("click", pollAI);
