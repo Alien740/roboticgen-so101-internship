@@ -427,7 +427,11 @@ class Drawer:
         arm, bus = self.arm, self.arm.robot.bus
         joints = [m for m in bus.motors if m != "gripper"]
         while True:
-            self.sess.ask("HOLD THE ARM (the forearm), then 'go' - the arm goes limp; the gripper keeps the pen", ["go"])
+            c = self.sess.ask("HOLD THE ARM (the forearm), then 'go' - the arm goes limp; the gripper keeps the pen "
+                              "('auto': no hands - the pen goes over the last drawing spot and is lowered step by step)",
+                              ["go", "auto"])
+            if c.strip().lower() == "auto":
+                return self.auto_place()
             bus.disable_torque(joints)
             try:
                 # the arm's height error is not flat over a whole sheet: touch the corners first, the centre last
@@ -491,6 +495,40 @@ class Drawer:
         self.roll_lim = (min(self.roll_lim[0], roll - 10), max(self.roll_lim[1], roll + 10))
         self.sess.ask("got it - you can let go of the arm, then 'go' (the pen lifts off the paper)", ["go"])
         self.goto((*center, tool_z + self.d["lift"]), duration=1.0)
+
+    def auto_place(self):
+        """No hands: the pen goes over the last drawing spot, pointing down as last placed, and is lowered
+        in small steps until its tip touches - answered by the operator or by an agent watching a
+        camera ('down', 'down 5', 'up', 'touch')."""
+        ps = pen_setup(self.prof)
+        self.pen_dir, self.center, self.length = ps["pen_dir"], ps["center"], PEN_NOMINAL
+        cx, cy = self.center
+        z = ps["paper_z"] + 0.04                                  # 4 cm above where the paper was last time
+        self.goto((cx, cy, z + 0.03), duration=3.0, tip=True)
+        self.line((cx, cy, z), speed=0.01, tip=True)
+        while True:
+            self.sess.event("pen_height", tip_mm_above_last_paper=round((z - ps["paper_z"]) * 1000, 1))
+            c = self.sess.ask("pen over the drawing spot: lower it until the tip JUST touches the paper - 'down' (1 mm), "
+                              "'down 5' (max 10), 'up 5', then 'touch'", ["down", "down 5", "up", "touch"]).split()
+            if not c:
+                continue
+            if c[0] == "touch":
+                break
+            if c[0] in ("down", "up"):
+                try:
+                    st = min(abs(float(c[1])) if len(c) > 1 else 1.0, 10.0) / 1000
+                except ValueError:
+                    continue
+                z += -st if c[0] == "down" else st
+                self.line((cx, cy, z), speed=0.005, tip=True)
+        self.samples, self.coef = [(float(cx), float(cy), z)], [0.0, 0.0, z]
+        self.prof.save_measured("pen", {"pen_dir_tool": [round(float(v), 3) for v in self.pen_dir],
+                                        "center": [round(float(v), 4) for v in self.center],
+                                        "paper_z": round(z, 4), "length": PEN_NOMINAL, "length_measured": False,
+                                        "plane": [0.0, 0.0, round(z, 5)],
+                                        "angles": {k: round(float(v), 1) for k, v in self.arm.angles().items()}})
+        self.sess.event("auto_placed", center_mm=[round(v * 1000) for v in self.center], paper_z_mm=round(z * 1000, 1))
+        self.line((cx, cy, z + self.d["lift"]), speed=0.015, tip=True)
 
     def draw(self, name, size_mm):
         size_mm = min(size_mm, self.d["max_size_mm"])

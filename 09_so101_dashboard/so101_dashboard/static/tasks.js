@@ -96,7 +96,12 @@ function drawStep(prompt) {
   if (p.includes("hold the arm")) return [3, "Get ready to place the pen",
     `<p>With one hand, <b>hold the robot's forearm</b>. When you press the button the arm goes <b>limp</b>
       (the gripper keeps holding the pen) – don't let it drop.</p>`,
-    B("go", "✓ I'm holding the arm – loosen it", "primary big")];
+    B("go", "✓ I'm holding the arm – loosen it", "primary big") + B("auto", "Auto – no hands")];
+  if (p.includes("pen over the drawing spot")) return [3, "Lower the pen onto the paper",
+    `<p>The pen is over the drawing spot. Lower it in small steps until the tip <b>just touches</b> the paper (watch the
+      side camera), then press <b>Touching now</b>.</p>`,
+    B("down 5", "↓ 5 mm") + B("down 2", "↓ 2 mm") + B("down", "↓ 1 mm") + B("up", "↑ 1 mm") + B("up 5", "↑ 5 mm")
+      + B("touch", "✓ Touching now", "primary big")];
   if (p.includes("near a corner")) {
     const n = (p.match(/\((\d) of 4/) || [])[1] || "1";
     return [3, `Touch corner ${n} of 4`,
