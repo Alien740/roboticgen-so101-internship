@@ -43,6 +43,7 @@ SPEEDS = {   # joint deg/s, Cartesian m/s, gripper units/s
 BOOST = 2.0                      # Shift / gamepad Y
 TABLE_Z = 0.005                  # Cartesian jog keeps the tool point this far above the table
 STALL_S = 1.0
+GRIP_OPEN_MAX = 95.0             # stop the jaw short of its open end stop (see joint_limits)
 HAND_SPEEDUP = 3.0               # hand following uses the preset joint speed x this (it is pre-smoothed)
 HAND_TIMEOUT_S = 0.5             # no hand frame for this long -> the arm holds where it is
 HAND_BOX = {"r": (0.12, 0.33), "z": (0.02, 0.30), "pitch": (-90.0, 30.0), "pan": (-90.0, 90.0)}
@@ -53,6 +54,9 @@ def joint_limits(prof):
     lim = dict(K.JOINT_LIMITS)
     w = prof.get("wrist", {})
     lim["wrist_roll"] = (float(w.get("roll_min_ok", -180.0)), float(w.get("roll_max_ok", 180.0)))
+    # 100 = the end stop recorded by calibration: holding it there pushes into the stop, trips the
+    # gripper's (deliberately sensitive) overload protection and the jaw stops responding
+    lim["gripper"] = (lim["gripper"][0], GRIP_OPEN_MAX)
     return lim
 
 
