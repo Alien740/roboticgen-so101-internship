@@ -37,7 +37,7 @@ poses:                         # joint degrees (lerobot use_degrees=True)
   clear_view:  {shoulder_pan: 0.0, shoulder_lift: -95.0, elbow_flex: 45.0, wrist_flex: -35.0, wrist_roll: 0.0}
 
 gripper:
-  open: 100.0
+  open: 85.0                   # 100 pressed the jaw on its end stop: overload trip + 5 V sag while waiting for a pen
   close: 0.0
   torque: 450                  # 300 stalled half-open on the 5 V supply; 500+ crushes the foam cube
   empty_threshold: 2.0         # pos after closing below this = nothing held (empty closes to ~0.4)
