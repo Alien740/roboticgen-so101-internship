@@ -189,7 +189,7 @@ async function startTask(b) {
   if (b.dataset.hover) options["--hover"] = true;
   if (task === "calibrate-hsv") options["--color"] = $("#hsvColor").value;
   const moves = !["report", "demo"].includes(task);
-  if (moves && S && S.mode === "real" && !confirm("The dashboard parks the arm and hands it to this procedure. Continue?")) return;
+  if (moves && S && S.mode === "real" && !twoStep(b, "Parks the arm – click again to start")) return;
   try { await api("task", { op: "start", task, options }); toast(`Starting ${task}…`); } catch (_) { return; }
   setTimeout(pollTask, 300);
 }
@@ -210,7 +210,7 @@ async function loadLibrary() {
   $$("#recList .rec-play").forEach(b => (b.onclick = () =>
     api("play", { name: b.dataset.n, speed: +$("#recSpeed").value }).catch(() => {})));
   $$("#recList .rec-del").forEach(b => (b.onclick = async () => {
-    if (!confirm(`Delete recording "${b.dataset.n}"?`)) return;
+    if (!twoStep(b, "Click again to delete")) return;
     await api("delete_recording", { name: b.dataset.n }).catch(() => {}); loadLibrary();
   }));
 }
@@ -231,7 +231,7 @@ $("#recBtn").onclick = async () => {
     if (!S || S.state !== "ready") { toast("Connect the arm first"); return; }
     recByHand = $("#recByHand").checked;
     if (recByHand) {
-      if (!confirm("Hold the arm now: the motors switch off so you can move it by hand.\nPress OK while holding it.")) return;
+      if (!twoStep($("#recBtn"), "✋ Hold the arm – click again to start")) return;
       try { if (S.torque) await api("torque", { on: false }); } catch (_) { return; }
     }
     api("record", { op: "start" }).catch(() => {});
@@ -242,8 +242,10 @@ $("#recBtn").onclick = async () => {
 setInterval(() => {
   if (!S) return;
   const rec = S.recording !== null && S.recording !== undefined;
-  $("#recBtn").textContent = rec ? "■ Stop & save" : "● Record";
-  $("#recBtn").classList.toggle("warn", rec);
+  if ($("#recBtn").dataset.armed !== "1") {                  // leave the "click again" prompt alone
+    $("#recBtn").textContent = rec ? "■ Stop & save" : "● Record";
+    $("#recBtn").classList.toggle("warn", rec);
+  }
   $("#recState").textContent = rec ? `recording… ${S.recording.toFixed(1)} s` : "";
   $("#playState").textContent = S.playing ? `playing ${S.playing.name} – ${Math.round(S.playing.progress * 100)} %`
     : S.traj ? `moving: ${S.traj.name}` : "";

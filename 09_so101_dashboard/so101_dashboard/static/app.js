@@ -27,6 +27,20 @@ function toast(msg) {
   const t = $("#toast"); t.textContent = msg; t.hidden = false;
   clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), 3500);
 }
+// Confirm by clicking twice instead of a confirm() pop-up: pop-ups are blocked in some browser tabs
+// (e.g. one an assistant's browser extension is driving), which silently cancelled the action.
+// First click arms the button (shows `label`), a second click within ARM_MS goes ahead.
+const ARM_MS = 6000;
+function twoStep(el, label) {
+  if (el.dataset.armed === "1") { clearTimeout(+el.dataset.armTimer); disarm(el); return true; }
+  el.dataset.armed = "1"; el.dataset.label = el.innerHTML; el.innerHTML = label; el.classList.add("armed");
+  el.dataset.armTimer = setTimeout(() => disarm(el), ARM_MS);
+  return false;
+}
+function disarm(el) {
+  if (el.dataset.armed !== "1") return;
+  el.dataset.armed = ""; el.innerHTML = el.dataset.label; el.classList.remove("armed");
+}
 const fmt = (v, d = 1) => (v === null || v === undefined || Number.isNaN(v) ? "–" : Number(v).toFixed(d));
 const ready = () => S && S.state === "ready" && !S.estop && S.torque;
 
@@ -161,11 +175,15 @@ $("#btnDisc").onclick = () => api("disconnect").catch(() => {});
 $("#btnEstop").onclick = () => estop();
 $("#btnReset").onclick = () => api("reset").catch(() => {});
 $$(".speed button").forEach(b => (b.onclick = () => api("speed", { level: b.dataset.speed }).catch(() => {})));
+let torqueArmed = 0;
 $("#torque").onchange = e => {
   const on = e.target.checked;
-  if (!on && !confirm("Torque OFF: the arm goes limp and will fall unless you hold it.\nHold the arm, then press OK.")) {
-    e.target.checked = true; return;
+  if (!on && Date.now() - torqueArmed > ARM_MS) {           // first untick: warn, second within 6 s: go
+    e.target.checked = true; torqueArmed = Date.now();
+    toast("Torque OFF makes the arm go limp. HOLD THE ARM, then untick Torque again (within 6 s).");
+    return;
   }
+  torqueArmed = 0;
   api("torque", { on }).catch(() => {});
 };
 function estop() { api("estop").catch(() => {}); }

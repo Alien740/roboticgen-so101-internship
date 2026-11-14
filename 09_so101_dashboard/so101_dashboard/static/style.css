@@ -206,3 +206,5 @@ button.btn:disabled { opacity: .45; cursor: not-allowed; }
 
 .sketchbox { margin: 10px 0; }
 .sketchbox canvas { width: 300px; max-width: 100%; aspect-ratio: 1; border-radius: 8px; touch-action: none; cursor: crosshair; display: block; }
+
+.btn.armed { background: var(--yellow); border-color: var(--yellow); color: #1F2022; font-weight: 700; }
