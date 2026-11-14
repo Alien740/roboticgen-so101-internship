@@ -81,7 +81,7 @@ document.addEventListener("input", e => {
 // plain instructions and only the buttons that make sense there. Answers are the program's own words.
 const DRAW_STEPS = ["Set up", "Pen in", "Grip", "Place by hand", "Draw", "Pen back"];
 let sketch = [];                                               // the sketch pad's strokes (canvas px)
-let drawSize = 40, drawLeveled = false;
+let drawSize = 80, drawLeveled = false;
 const B = (a, label, cls = "") => `<button class="btn ${cls} ans" data-a="${escapeHtml(a)}">${label}</button>`;
 
 function drawStep(prompt) {
@@ -134,7 +134,7 @@ function drawStep(prompt) {
     `<p>Pick a shape, or <b>sketch anything</b> in the box and press <b>Draw my sketch</b> – the robot copies it onto
       the paper at the size below. <span class="muted">(Optional: <b>Level paper</b> touches 3 corners first, for a
       sheet that isn't flat.)</span></p>
-     <div class="slider"><label for="drawSize">Size</label><div class="track"><input type="range" id="drawSize" min="20" max="60" step="5" value="${drawSize}"></div><output>${drawSize} mm</output></div>
+     <div class="slider"><label for="drawSize">Size</label><div class="track"><input type="range" id="drawSize" min="40" max="120" step="10" value="${drawSize}"></div><output>${drawSize} mm</output></div>
      <div class="sketchbox"><canvas id="sketch" width="300" height="300"></canvas>
        <div class="row wrap"><button class="btn primary sketch-draw">✎ Draw my sketch</button>
          <button class="btn sketch-undo">Undo</button><button class="btn sketch-clear">Clear</button></div>
