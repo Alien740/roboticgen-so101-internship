@@ -79,7 +79,8 @@ document.addEventListener("input", e => {
 // ------------------------------------------------------------------ Draw: one step at a time
 // The drawing program (framework so101 draw) asks questions; each prompt is mapped to a step with
 // plain instructions and only the buttons that make sense there. Answers are the program's own words.
-const DRAW_STEPS = ["Set up", "Pen in", "Grip", "Straight down", "Height", "Touch paper", "Draw", "Pen back"];
+const DRAW_STEPS = ["Set up", "Pen in", "Grip", "Place by hand", "Draw", "Pen back"];
+let sketch = [];                                               // the sketch pad's strokes (canvas px)
 let drawSize = 40, drawLeveled = false;
 const B = (a, label, cls = "") => `<button class="btn ${cls} ans" data-a="${escapeHtml(a)}">${label}</button>`;
 
@@ -92,6 +93,18 @@ function drawStep(prompt) {
   if (p.includes("pen gripped")) return [2, "Check the grip",
     `<p>Let go of the pen and give it a gentle tug. It should not slip.</p>`,
     B("go", "✓ It's firm", "primary big")];
+  if (p.includes("hold the arm")) return [3, "Get ready to place the pen",
+    `<p>With one hand, <b>hold the robot's forearm</b>. When you press the button the arm goes <b>limp</b>
+      (the gripper keeps holding the pen) – don't let it drop.</p>`,
+    B("go", "✓ I'm holding the arm – loosen it", "primary big")];
+  if (p.includes("move the pen by hand")) return [3, "Place the pen on the paper",
+    `<p>Move the arm by hand so the pen points <b>straight down</b> with its <b>tip touching the paper</b> where you
+      want the drawing (best near the middle of the sheet). Hold it still and press the button – the robot
+      remembers this spot and holds it.</p>`,
+    B("go", "✓ Tip is on the paper – keep it here", "primary big")];
+  if (p.includes("you can let go of the arm")) return [3, "Got it",
+    `<p>The robot is holding the pen now. Let go of the arm, then press the button – the pen lifts off the paper.</p>`,
+    B("go", "✓ Let go – lift the pen", "primary big")];
   if (p.includes("straight down") && p.includes("now")) return [3, "Straight down now?",
     `<p>Look at the pen from the front and from the side.</p>`,
     B("go", "✓ Yes, straight down", "primary big") + B("roll -10", "turn ↺ 10°") + B("roll 10", "turn ↻ 10°") + B("roll -3", "↺ 3°") + B("roll 3", "↻ 3°")];
@@ -107,24 +120,29 @@ function drawStep(prompt) {
     B("go", "✓ Pen is back – grip it", "primary big")];
   if (p.includes("let go of the pen")) return [3, "Flip the pen (3/3)",
     `<p>Let go of the pen.</p>`, B("go", "✓ Done", "primary big")];
-  if (p.includes("how high")) return [4, "How high is the tip above the paper?",
+  if (p.includes("how high")) return [3, "How high is the tip above the paper?",
     `<p>Measure with a ruler (or estimate) the gap between the <b>pen tip</b> and the paper. A rough number is fine –
       next you lower it the last bit by hand.</p>`,
     [40, 60, 80, 100, 120].map(v => B(String(v), `${v} mm`, v === 80 ? "primary" : "")).join("")
       + `<input class="btn sess-text" placeholder="or type mm" style="width:110px"><button class="btn sess-send">Send</button>`];
-  if (p.includes("'touch'")) return [5, drawLeveled ? "Touch the paper (corner)" : "Lower the pen until it just touches",
+  if (p.includes("'touch'")) return [drawLeveled ? 4 : 3, drawLeveled ? "Touch the paper (corner)" : "Lower the pen until it just touches",
     `<p>Lower the pen in small steps. Stop when the tip <b>just touches</b> the paper (it may bend very slightly),
       then press <b>Touching now</b>.</p>`,
     B("down 5", "↓ 5 mm") + B("down 3", "↓ 3 mm") + B("down", "↓ 1 mm") + B("up", "↑ 1 mm") + B("up 5", "↑ 5 mm")
       + B("touch", "✓ Touching now", "primary big")];
-  if (p.includes("'draw <shape>")) return [6, "Ready to draw",
-    `<p>${drawLeveled ? "Pick a shape." : "First press <b>Level paper</b> once: the pen touches 3 corners so it follows the paper even if the table is not flat. Then pick a shape."}</p>
+  if (p.includes("'draw <shape>")) return [4, "Draw!",
+    `<p>Pick a shape, or <b>sketch anything</b> in the box and press <b>Draw my sketch</b> – the robot copies it onto
+      the paper at the size below. <span class="muted">(Optional: <b>Level paper</b> touches 3 corners first, for a
+      sheet that isn't flat.)</span></p>
      <div class="slider"><label for="drawSize">Size</label><div class="track"><input type="range" id="drawSize" min="20" max="60" step="5" value="${drawSize}"></div><output>${drawSize} mm</output></div>
-     <div class="row wrap"><button class="btn ${drawLeveled ? "" : "primary"} draw-level">⌖ Level paper</button></div>`,
+     <div class="sketchbox"><canvas id="sketch" width="300" height="300"></canvas>
+       <div class="row wrap"><button class="btn primary sketch-draw">✎ Draw my sketch</button>
+         <button class="btn sketch-undo">Undo</button><button class="btn sketch-clear">Clear</button></div>
+       <p class="muted">The top of the box is away from the robot.</p></div>`,
     [["circle", "○ Circle"], ["square", "□ Square"], ["star", "☆ Star"], ["smiley", "☺ Smiley"], ["house", "⌂ House"], ["spiral", "@ Spiral"]]
-      .map(([k, l]) => `<button class="btn shape ${k === "circle" && drawLeveled ? "primary" : ""}" data-s="${k}">${l}</button>`).join("")
-      + B("quit", "Finish – give the pen back", "warn")];
-  if (p.includes("release it")) return [7, "Take the pen back",
+      .map(([k, l]) => `<button class="btn shape" data-s="${k}">${l}</button>`).join("")
+      + `<button class="btn draw-level">⌖ Level paper</button>` + B("place", "Place again") + B("quit", "Finish – give the pen back", "warn")];
+  if (p.includes("release it")) return [5, "Take the pen back",
     `<p>Hold the pen, then press the button – the gripper opens.</p>`, B("go", "✓ I'm holding it", "primary big")];
   return null;
 }
@@ -160,6 +178,7 @@ function renderDraw() {
     const typed = card.querySelector(".sess-text")?.value || "";
     card.dataset.html = html; card.innerHTML = html;
     const inp = card.querySelector(".sess-text"); if (inp) inp.value = typed;
+    paintSketch();
   }
   card.classList.toggle("moving", !st);
 }
@@ -255,3 +274,44 @@ $("#aiStop").onclick = () => api("ai", { op: "stop" }).catch(() => {});
 $("#aiReset").onclick = () => api("ai", { op: "reset" }).then(pollAI).catch(() => {});
 $$("#aiExamples .ai-ex").forEach(b => (b.onclick = () => aiSend(b.textContent)));
 $('.tab[data-tab="ai"]').addEventListener("click", pollAI);
+
+
+// ------------------------------------------------------------------ sketch pad -> robot drawing
+function paintSketch() {
+  const c = $("#sketch"); if (!c) return;
+  const g = c.getContext("2d");
+  g.fillStyle = "#fff"; g.fillRect(0, 0, c.width, c.height);
+  g.strokeStyle = "#e3e5e8"; g.lineWidth = 1; g.strokeRect(0.5, 0.5, c.width - 1, c.height - 1);
+  g.strokeStyle = "#022F49"; g.lineWidth = 3; g.lineCap = g.lineJoin = "round";
+  for (const st of sketch) {
+    g.beginPath(); st.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke();
+  }
+}
+let penDown = null;
+document.addEventListener("pointerdown", e => {
+  if (e.target.id !== "sketch") return;
+  e.preventDefault(); e.target.setPointerCapture(e.pointerId);
+  const r = e.target.getBoundingClientRect(), k = e.target.width / r.width;
+  penDown = [[(e.clientX - r.left) * k, (e.clientY - r.top) * k]]; sketch.push(penDown); paintSketch();
+});
+document.addEventListener("pointermove", e => {
+  if (!penDown || e.target.id !== "sketch") return;
+  const r = e.target.getBoundingClientRect(), k = e.target.width / r.width;
+  const p = [(e.clientX - r.left) * k, (e.clientY - r.top) * k], q = penDown[penDown.length - 1];
+  if (Math.hypot(p[0] - q[0], p[1] - q[1]) >= 2) { penDown.push(p); paintSketch(); }
+});
+document.addEventListener("pointerup", () => { penDown = null; });
+document.addEventListener("click", async e => {
+  const b = e.target.closest("button"); if (!b) return;
+  if (b.classList.contains("sketch-clear")) { sketch = []; paintSketch(); }
+  else if (b.classList.contains("sketch-undo")) { sketch.pop(); paintSketch(); }
+  else if (b.classList.contains("sketch-draw")) {
+    const strokes = sketch.filter(st => st.length >= 2)
+      .map(st => st.map(([x, y]) => [-(x - 150), -(y - 150)]));     // canvas -> u (left), v (away)
+    if (!strokes.length) { toast("Sketch something in the box first"); return; }
+    try {
+      const r = await api("save_drawing", { name: "sketch", strokes });
+      answer(`drawfile ${r.name} ${drawSize}`);
+    } catch (_) { /* toast shown */ }
+  }
+});

@@ -12,7 +12,7 @@ GET  /api/task            the running framework task (draw, pick-place, calibrat
 GET  /api/library         motions and saved recordings
 GET  /api/ai              the AI tab's transcript (Claude plans moves with the controller's tools)
 POST /api/<command>       connect, disconnect, estop, reset, speed, torque, jog, set, goto, hand, mimic,
-                          motion, record, play, delete_recording, task, ai, ai_tool, doctor
+                          motion, record, play, delete_recording, task, save_drawing, ai, ai_tool, doctor
 
 Every POST must carry the header `X-SO101: 1` (browsers cannot add custom headers cross-site
 without a CORS preflight, which this server never grants, so a random web page cannot drive
@@ -145,6 +145,15 @@ class App:
                 self.tasks.stop()
             else:
                 raise ValueError("task op must be start | answer | stop")
+        elif name == "save_drawing":                  # a sketch from the Draw tab -> `drawfile <name>`
+            strokes = [[[float(x), float(y)] for x, y in st] for st in body["strokes"] if len(st) >= 2]
+            if not strokes or sum(map(len, strokes)) > 20000:
+                raise ValueError("draw something first (and keep it under 20000 points)")
+            name_ = self._rec_name(body.get("name") or "sketch")
+            d = self.prof.run_dir / "drawings"
+            d.mkdir(parents=True, exist_ok=True)
+            (d / f"{name_}.json").write_text(json.dumps({"strokes": strokes}))
+            return {"ok": True, "name": name_}
         elif name == "ai_tool":                       # one robot tool, for `so101-robot` (Claude Code backend)
             out, err = self.ai._tool(body["name"], body.get("input") or {})
             return {"ok": True, "result": out, "is_error": err}

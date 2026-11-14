@@ -373,6 +373,9 @@ class Controller:
         if t >= fr[-1][0]:
             self.target.update({k: self._clamp(k, v) for k, v in fr[-1][1].items()})
             return True
+        if t <= fr[0][0]:                                  # recordings start a few ms after 0
+            self.target.update({k: self._clamp(k, v) for k, v in fr[0][1].items()})
+            return False
         i = max(i for i, f in enumerate(fr) if f[0] <= t)
         (t0, a), (t1, b) = fr[i], fr[i + 1]
         u = (t - t0) / max(t1 - t0, 1e-6)

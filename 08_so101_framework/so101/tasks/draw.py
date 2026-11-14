@@ -2,11 +2,16 @@
 
 Session (answer each prompt; 'stop' aborts motion at any time in agent mode, Ctrl+C in a terminal):
   1. load   - gripper opens unrotated; put the pen across the jaws, tip out 5-7 cm   ('roll <deg>' first if needed)
+  2. place  - (default) the arm goes limp while the gripper keeps the pen: move it by hand so the pen
+             points straight down with its tip ON the paper where the drawing should go, then 'go'.
+             That one pose gives the pen direction, the drawing spot and the pen length.
+             (the older steps below stay available: 'tilt' + 'probe' at the drawing menu)
   2. tilt   - wrist tilts up so the pen points down; confirm by EYE  ('roll <deg>', 'flip', 'nudge <away> <left>')
              -> the confirmed pen direction is saved to measured.yaml for next time
   3. height - say how high the tip is (mm), then jog: 'down', 'down 3', 'up', ... 'touch'
   4. draw   - 'level 60' (touch 3 corners: follows the paper's slope), 'draw circle 60', 'press 3.5',
-             'speed 10', 'move <away_mm> <left_mm>', 'quit'
+             'speed 10', 'move <away_mm> <left_mm>', 'drawfile <name>' (strokes from
+             runs/<profile>/drawings/<name>.json, e.g. a sketch from the dashboard), 'place', 'quit'
 
 Lessons encoded here (docs/TROUBLESHOOTING.md has the full story):
 - The URDF wrist-roll zero is ~90 deg off this arm: "pen down" = gripper UNROTATED + wrist
@@ -22,6 +27,7 @@ Lessons encoded here (docs/TROUBLESHOOTING.md has the full story):
 """
 from __future__ import annotations
 
+import json
 import math
 import time
 
@@ -59,8 +65,24 @@ SHAPES = ("square", "circle", "star", "spiral", "smiley", "house")
 
 
 def to_base(strokes_mm, center):
-    """Shape frame: +u = robot's left (+y), +v = away from the robot (+x)."""
-    return [[(center[0] + v / 1000, center[1] + u / 1000) for u, v in st] for st in strokes_mm]
+    """Shape frame: +u = left, +v = away from the robot, turned to face the drawing spot (a drawing to
+    the side of the robot is upright as seen from the robot's base, not tilted by the base angle)."""
+    a = math.atan2(center[1], center[0])
+    c, s = math.cos(a), math.sin(a)
+    return [[(center[0] + (v * c - u * s) / 1000, center[1] + (v * s + u * c) / 1000) for u, v in st] for st in strokes_mm]
+
+
+def fit_strokes(strokes_mm, size_mm):
+    """Centre strokes on 0,0 and scale them so the larger side is size_mm (aspect kept).
+    Single points (stray clicks) are dropped first."""
+    strokes_mm = [st for st in strokes_mm if len(st) >= 2]
+    pts = [p for st in strokes_mm for p in st]
+    if len(pts) < 2:
+        raise ValueError("the drawing is empty")
+    us, vs = [p[0] for p in pts], [p[1] for p in pts]
+    cu, cv = (min(us) + max(us)) / 2, (min(vs) + max(vs)) / 2
+    k = size_mm / max(max(us) - min(us), max(vs) - min(vs), 1e-6)
+    return [[((u - cu) * k, (v - cv) * k) for u, v in st] for st in strokes_mm]
 
 
 def fit_plane(samples):
@@ -214,10 +236,61 @@ class Drawer:
         self.sess.event("plane", heights_mm=[round(z, 1) for z in zs],
                         tilt_deg=round(math.degrees(math.atan(math.hypot(self.coef[0], self.coef[1]))), 2))
 
+    def hand_place(self):
+        """The person places the pen by hand: tip on the paper, pen straight down. Only the gripper
+        keeps torque. Paper height = 0 at that point (same convention as touch_off)."""
+        arm, bus = self.arm, self.arm.robot.bus
+        joints = [m for m in bus.motors if m != "gripper"]
+        while True:
+            self.sess.ask("HOLD THE ARM (the forearm), then 'go' - the arm goes limp; the gripper keeps the pen", ["go"])
+            bus.disable_torque(joints)
+            try:
+                self.sess.ask("move the pen by hand: tip ON the paper where the drawing should be, pen STRAIGHT DOWN; "
+                              "hold it still, then 'go'", ["go"])
+                a = arm.angles()
+            finally:
+                present = bus.sync_read("Present_Position", joints)
+                bus.sync_write("Goal_Position", present)          # hold exactly here, no jump
+                bus.enable_torque(joints)
+            T = K.fk(a)
+            tool_z = float(T[2, 3])
+            if tool_z < 0.02:
+                self.sess.say(f"the gripper is only {tool_z*1000:.0f} mm above the paper - the pen must stick out "
+                              "below the jaws; reload it further out or hold it higher, then try again")
+                continue
+            pen_dir = T[:3, :3].T @ DOWN                          # this pose = pen straight down
+            center = np.array(T[:2, 3], float)
+            try:
+                K.pen_ik((*center, tool_z + 0.04), arm.angles(), pen_dir, roll_limits=self.roll_lim)
+            except Exception:
+                self.sess.say("the pen can't stay straight down there - place it a little closer to or further "
+                              "from the robot (about 24-33 cm from the base), then try again")
+                continue
+            break
+        self.pen_dir, self.center, self.length = pen_dir, center, tool_z
+        self.samples, self.coef = [(float(center[0]), float(center[1]), 0.0)], [0.0, 0.0, 0.0]
+        self.prof.save_measured("pen", {"pen_dir_tool": [round(float(v), 3) for v in self.pen_dir]})
+        self.sess.event("hand_placed", center_mm=[round(v * 1000) for v in center], pen_length_mm=round(tool_z * 1000, 1))
+        self.sess.ask("got it - you can let go of the arm, then 'go' (the pen lifts off the paper)", ["go"])
+        self.line((*center, tool_z + self.d["lift"]), speed=0.01)
+
     def draw(self, name, size_mm):
         size_mm = min(size_mm, self.d["max_size_mm"])
-        strokes = to_base(shape(name, size_mm), self.center)
-        self.sess.event("drawing", shape=name, size_mm=size_mm, press_mm=self.press * 1000, speed_mm_s=self.speed * 1000)
+        self.draw_strokes(shape(name, size_mm), name)
+
+    def draw_file(self, fname, size_mm):
+        f = self.prof.run_dir / "drawings" / f"{''.join(ch for ch in fname if ch.isalnum() or ch in '-_')}.json"
+        if not f.exists():
+            raise FileNotFoundError(f"no drawing '{fname}' in {f.parent}")
+        d = json.loads(f.read_text())
+        size_mm = min(float(d.get("size_mm", size_mm)), self.d["max_size_mm"])
+        self.draw_strokes(fit_strokes(d["strokes"], size_mm), fname)
+
+    def draw_strokes(self, strokes_mm, name):
+        strokes = to_base(strokes_mm, self.center)
+        pts_mm = [p for st in strokes_mm for p in st]
+        size_mm = max(max(p[0] for p in pts_mm) - min(p[0] for p in pts_mm), max(p[1] for p in pts_mm) - min(p[1] for p in pts_mm))
+        self.sess.event("drawing", shape=name, size_mm=round(size_mm), press_mm=self.press * 1000, speed_mm_s=self.speed * 1000)
         self.arm.set_grip_torque(self.d["pen_torque"])
         t0, total = time.time(), 0.0
         try:
@@ -258,13 +331,13 @@ def main(a, prof, sess):
     with Arm(prof) as arm:
         dr = Drawer(arm, prof, sess)
         dr.load_pen()
-        dr.tilt()
-        dr.touch_off()
+        dr.hand_place()
         while True:
             dr.goto((*dr.center, plane_z(dr.coef, dr.center) + dr.length + 0.04), duration=1.5)
-            c = sess.ask("'draw <shape> <size_mm>' (" + " ".join(SHAPES) + "), 'level <size_mm>', 'press <mm>', "
-                         "'speed <mm/s>', 'move <away_mm> <left_mm>', 'probe', 'quit'",
-                         ["draw <shape> <size_mm>", "level 60", "press <mm>", "speed <mm/s>", "move <away> <left>", "probe", "quit"]).split()
+            c = sess.ask("'draw <shape> <size_mm>' (" + " ".join(SHAPES) + "), 'drawfile <name> [size_mm]', 'level <size_mm>', "
+                         "'press <mm>', 'speed <mm/s>', 'move <away_mm> <left_mm>', 'place', 'probe', 'quit'",
+                         ["draw <shape> <size_mm>", "drawfile <name>", "level 60", "press <mm>", "speed <mm/s>",
+                          "move <away> <left>", "place", "probe", "quit"]).split()
             if not c:
                 continue
             try:
@@ -272,6 +345,10 @@ def main(a, prof, sess):
                     break
                 elif c[0] == "draw" and len(c) >= 2:
                     dr.draw(c[1], float(c[2]) if len(c) > 2 else 40.0)
+                elif c[0] == "drawfile" and len(c) >= 2:
+                    dr.draw_file(c[1], float(c[2]) if len(c) > 2 else 50.0)
+                elif c[0] == "place":
+                    dr.hand_place()
                 elif c[0] == "level":
                     dr.level(float(c[1]) if len(c) > 1 else 60.0)
                 elif c[0] == "press" and len(c) == 2:

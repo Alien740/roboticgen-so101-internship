@@ -203,3 +203,6 @@ button.btn:disabled { opacity: .45; cursor: not-allowed; }
 .wizcard.moving { border-color: var(--line); }
 .drawlog { margin-top: 12px; font-size: 13px; }
 .drawlog summary { cursor: pointer; color: var(--muted); }
+
+.sketchbox { margin: 10px 0; }
+.sketchbox canvas { width: 300px; max-width: 100%; aspect-ratio: 1; border-radius: 8px; touch-action: none; cursor: crosshair; display: block; }

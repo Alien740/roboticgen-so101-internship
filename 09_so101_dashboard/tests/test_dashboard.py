@@ -379,3 +379,11 @@ def test_robot_cli_maps_commands_to_agent_tools():
     for bad in (["rm", "-rf"], ["move", "1"], []):
         with pytest.raises(SystemExit):
             parse(bad)
+
+
+def test_playback_before_the_first_frame_holds_the_first_pose():
+    c = Controller(P.load("my_so101"))
+    c.goal = dict(WORK); c.target = dict(WORK)
+    c.playback = {"frames": [[0.05, {"shoulder_pan": 10.0}], [1.0, {"shoulder_pan": 20.0}]],
+                  "t0": time.monotonic(), "speed": 1.0, "name": "rec"}
+    assert c._playback_target() is False and c.target["shoulder_pan"] == 10.0

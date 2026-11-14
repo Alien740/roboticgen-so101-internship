@@ -83,3 +83,23 @@ def test_cli_parses(argv):
     from so101.cli import build_parser
     a = build_parser().parse_args(argv)
     assert callable(a.fn)
+
+
+def test_sketch_strokes_are_centred_and_scaled():
+    from so101.tasks.draw import fit_strokes
+    out = fit_strokes([[(10, 10), (30, 10), (30, 50)], [(0, 0)]], 40)      # 1-point strokes are dropped
+    pts = [p for st in out for p in st]
+    assert len(out) == 1
+    assert abs(max(p[1] for p in pts) - min(p[1] for p in pts) - 40) < 1e-9   # larger side -> 40 mm
+    assert abs(max(p[0] for p in pts) + min(p[0] for p in pts)) < 1e-9       # centred
+
+
+def test_drawing_to_the_side_stays_upright_from_the_base():
+    import math
+    from so101.tasks.draw import to_base
+    ahead = to_base([[(0, 0), (0, 10)]], (0.28, 0.0))[0]                    # +v = away from the robot
+    assert abs(ahead[1][0] - ahead[0][0] - 0.010) < 1e-9 and abs(ahead[1][1] - ahead[0][1]) < 1e-9
+    c = (0.285 * math.cos(math.radians(47)), 0.285 * math.sin(math.radians(47)))
+    side = to_base([[(0, 0), (0, 10)]], c)[0]                               # away = radially outward there
+    d = (side[1][0] - side[0][0], side[1][1] - side[0][1])
+    assert abs(math.degrees(math.atan2(d[1], d[0])) - 47) < 1e-6
