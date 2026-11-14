@@ -139,7 +139,8 @@
     <div class="tabpane" id="tab-hand" hidden>
       <h3>Hand / arm control <small>the robot follows you through this computer's camera</small></h3>
       <div class="seg" id="followMode" role="radiogroup" aria-label="What the robot follows">
-        <button data-mode="side" class="on">Side view</button>
+        <button data-mode="joy" class="on">Hand joystick</button>
+        <button data-mode="side">Side view</button>
         <button data-mode="arm">Front: whole arm</button>
         <button data-mode="hand">My hand</button>
       </div>
@@ -164,7 +165,22 @@
         <dt>gripper</dt><dd id="hrGrip">–</dd>
       </dl>
 
-      <div id="sideHelp">
+      <div id="joyHelp">
+        <h3>How to move <small>sit facing the laptop, hand 40–60 cm from the camera, palm toward it</small></h3>
+        <table class="keys">
+          <tr><td>hand left / right</td><td>gripper near the base (15 cm) / far out (33 cm)</td></tr>
+          <tr><td>hand down / up</td><td>gripper at the table / 15 cm up</td></tr>
+          <tr><td>make a fist / open your hand</td><td>gripper closes fully / opens</td></tr>
+          <tr><td>(always)</td><td>gripper points straight down</td></tr>
+          <tr><td>hand leaves the picture</td><td>robot holds still</td></tr>
+          <tr><td><kbd>Space</kbd> / <kbd>Esc</kbd></td><td><b>E-STOP</b> (always)</td></tr>
+        </table>
+        <p class="muted">The box on the video is the robot's reach: keep your hand inside it. Only hand tracking is used
+          (the most precise model). Following first moves the robot to a ready pose above the table, then eases into
+          your hand's position.</p>
+      </div>
+
+      <div id="sideHelp" hidden>
         <h3>How to move <small>stand or sit SIDEWAYS to the camera, so it sees your arm in profile</small></h3>
         <table class="keys">
           <tr><td>raise your upper arm forward / lower it</td><td>robot shoulder leans out / back</td></tr>
@@ -175,9 +191,6 @@
           <tr><td>arm leaves the picture</td><td>robot holds still</td></tr>
           <tr><td><kbd>Space</kbd> / <kbd>Esc</kbd></td><td><b>E-STOP</b> (always)</td></tr>
         </table>
-        <div class="sliders">
-          <div class="slider"><label for="planePan">Base direction</label><div class="track"><input type="range" id="planePan" min="-75" max="75" step="1" value="0"></div><output>0°</output></div>
-        </div>
         <p class="muted">Your upper arm, elbow and hand drive the robot's shoulder, elbow and wrist in one vertical plane
           (base fixed at the slider, + = the robot's right). When you tick Follow, your current arm shape is tied to the
           robot's current pose and only your movements from there move it, so it never jumps. Each joint stays in a
@@ -189,7 +202,7 @@
         <h3>How to move <small>stand back so the camera sees your shoulders and your whole arm</small></h3>
         <table class="keys">
           <tr><td>hand out in front / close to your body</td><td>gripper reaches out (33 cm) / comes near the base (15 cm)</td></tr>
-          <tr><td>hand down at your hip / up at your shoulder</td><td>gripper at the table / 20 cm up</td></tr>
+          <tr><td>hand down at your hip / up at your shoulder</td><td>gripper at the table / 15 cm up</td></tr>
           <tr><td>hand to your left / right</td><td>base turns</td></tr>
           <tr><td>hand pointing down / level</td><td>gripper points down / forward</td></tr>
           <tr><td>turn your hand (palm down ↔ sideways)</td><td>wrist roll</td></tr>
@@ -222,6 +235,10 @@
           <div class="slider"><label for="hgR">Reach range</label><div class="track"><input type="range" id="hgR" min="5" max="50" value="25"></div><output>25</output></div>
         </div>
         <label class="toggle"><input type="checkbox" id="hgPitchOff"> <span>Lock tool pitch</span></label>
+      </div>
+
+      <div class="sliders" id="baseBox">
+          <div class="slider"><label for="planePan">Base direction</label><div class="track"><input type="range" id="planePan" min="-75" max="75" step="1" value="0"></div><output>0°</output></div>
       </div>
 
       <h3>Tuning</h3>

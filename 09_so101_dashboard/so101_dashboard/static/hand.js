@@ -1,4 +1,9 @@
-// Hand / arm control from this computer's camera (MediaPipe, in the browser). Three modes:
+// Hand / arm control from this computer's camera (MediaPipe, in the browser). Four modes:
+//
+// "Hand joystick" (default, the reliable one for demos): hand tracking only. In the picture, your hand
+//   left/right -> gripper reach, up/down -> gripper height (JOY_SPACE: the box drawn on the video),
+//   fist/open -> gripper; the gripper always points straight down and the base stays at the slider.
+//   Sent to POST /api/hand (IK, noise hold-zone, smooth motion on the server).
 //
 // "Side view" (default): you sit/stand side-on to the camera, which sees your arm in profile (2D,
 //   no depth guessing). Direct joint control in one vertical plane, base fixed by a slider:
@@ -43,7 +48,9 @@ const SIDE_JOINTS = {
   elbow_flex:    { from: "elbow", sign: -1, range: [-60, 97] },  // bend your elbow (forearm up) = forearm up
   wrist_flex:    { from: "wrist", sign: -1, range: [-40, 95] },  // hand down = gripper down
 };
-// Follow (side view) first moves here: gripper ~21 cm out, 5 cm above the table, pointing down,
+// hand position in the picture (0..1, x as you see yourself) -> gripper reach / height (m)
+const JOY_SPACE = { x: [0.2, 0.8], y: [0.8, 0.2], reach: [0.15, 0.33], height: [0.01, 0.15] };
+// Follow (joystick / side view) first moves here: gripper ~21 cm out, 5 cm above the table, pointing down,
 // half open - room to move every way. Folded at rest, most first moves would hit the table.
 const READY = { shoulder_lift: -20, elbow_flex: 30, wrist_flex: 70, wrist_roll: 0, gripper: 60 };
 const READY_S = 2.5;
@@ -53,7 +60,7 @@ const SIDES = { right: { sh: 12, el: 14, wr: 16, idx: 20 }, left: { sh: 11, el: 
 
 const video = $("#handVideo"), canvas = $("#handCanvas"), ctx = canvas.getContext("2d");
 let handLm = null, poseLm = null, running = false, feat = null, neutral = null, lastSend = 0, busy = false;
-let armRef = null, steady = 0, mode = "side", engage = null, armLen = 0, facing = 1, readyUntil = 0;
+let armRef = null, steady = 0, mode = "joy", engage = null, armLen = 0, facing = 1, readyUntil = 0;
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const deg = r => (r * 180) / Math.PI;
@@ -263,7 +270,7 @@ function nearerSide(P) {
 // ------------------------------------------------------------------ smoothing
 // One-Euro filter per feature: heavy smoothing while still (kills camera jitter), light while moving
 // fast (no lag). SCALE = a "noticeable" change of each feature, so one beta fits all.
-const SCALE = { x: 0.02, y: 0.02, size: 0.01, flex: 4, roll: 4, pinch: 0.08, open: 0.08,
+const SCALE = { x: 0.015, y: 0.015, size: 0.01, flex: 4, roll: 4, pinch: 0.08,
   reach: 0.02, height: 0.02, pitch: 4, pan: 3, lift: 3, elbow: 3, wrist: 4, frontal: 0.1, curl: 10 };
 const euro = {};
 let lastT = 0;
@@ -314,7 +321,7 @@ function loop() {
     canvas.width = video.videoWidth; canvas.height = video.videoHeight;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const ts = performance.now();
-    if (mode === "side") sideFrame(ts); else if (mode === "arm") armFrame(ts); else handFrame(ts);
+    if (mode === "joy") joyFrame(ts); else if (mode === "side") sideFrame(ts); else if (mode === "arm") armFrame(ts); else handFrame(ts);
   }
   requestAnimationFrame(loop);
 }
@@ -375,6 +382,65 @@ function armFrame(ts) {
   if (t.grip !== null) body.grip = t.grip;
   status("", u < 1 ? "arm – easing in" : "arm – following");
   send("hand", body);
+}
+
+// ------------------------------------------------------------------ hand joystick
+function joyTarget(f) {
+  const m = (v, [a, b], [c, d]) => c + (d - c) * clamp((v - a) / (b - a), 0, 1);
+  return { pan: val("#planePan"), r: m(f.x, JOY_SPACE.x, JOY_SPACE.reach), z: m(f.y, JOY_SPACE.y, JOY_SPACE.height),
+    pitch: -90, roll: null, grip: gripValue(f) };
+}
+
+function drawJoyBox(f) {
+  const W = canvas.width, H = canvas.height;
+  const [x0, x1] = JOY_SPACE.x.map(v => (1 - v) * W), [y1, y0] = JOY_SPACE.y.map(v => v * H);  // canvas is mirrored
+  ctx.lineWidth = 2; ctx.setLineDash([8, 6]); ctx.strokeStyle = "rgba(255,255,255,.7)";
+  ctx.strokeRect(Math.min(x0, x1), y0, Math.abs(x1 - x0), y1 - y0);
+  ctx.setLineDash([]);
+  if (f) {
+    ctx.fillStyle = "#FDB713";
+    ctx.beginPath(); ctx.arc((1 - f.x) * W, f.y * H, 12, 0, 7); ctx.fill();
+  }
+}
+
+function joyFrame(ts) {
+  const res = handLm.detectForVideo(video, ts);
+  const lm = res.landmarks?.[0], world = res.worldLandmarks?.[0];
+  const follow = $("#handFollow").checked;
+  if (!(lm && world)) {
+    release(); drawJoyBox(null);
+    status(follow ? "Show your hand inside the box (palm to the camera)" : "Show your hand to the camera",
+      "no hand – robot holds still");
+    return;
+  }
+  drawHand(lm);
+  const palm = [0, 5, 9, 17];
+  feat = smooth({ x: 1 - palm.reduce((s, i) => s + lm[i].x, 0) / 4, y: palm.reduce((s, i) => s + lm[i].y, 0) / 4,
+    ...gripFeatures(world) });
+  drawJoyBox(feat);
+  const t = joyTarget(feat);
+  showJoy(t);
+  steady++;
+  if (performance.now() < readyUntil) { status("Moving to the ready pose…", "hand – robot getting ready"); return; }
+  if (!follow || steady < STEADY_FRAMES) {
+    status(follow ? "Hold still…" : "Tick “Follow me” to move the robot", follow ? "hand – hold still" : "hand");
+    return;
+  }
+  if (!engage) engage = { t0: performance.now(), from: armPose() };
+  const u = clamp((performance.now() - engage.t0) / 1000 / RAMP_S, 0, 1);
+  const e = engage.from, mix = (a, b) => a + (b - a) * u;      // ease from where the gripper is
+  status("", u < 1 ? "hand – easing in" : "hand – following");
+  send("hand", { pan: t.pan, r: mix(e.r, t.r), z: mix(Math.max(e.z, JOY_SPACE.height[0]), t.z),
+    pitch: mix(clamp(e.pitch, -90, 30), t.pitch), grip: t.grip });
+}
+
+function showJoy(t) {
+  $("#hrPan").textContent = `${t.pan.toFixed(0)}°`;
+  $("#hrR").textContent = `${(t.r * 100).toFixed(1)} cm`;
+  $("#hrZ").textContent = `${(t.z * 100).toFixed(1)} cm`;
+  $("#hrPitch").textContent = "straight down";
+  $("#hrRoll").textContent = "fixed";
+  $("#hrGrip").textContent = `${t.grip.toFixed(0)} %  (finger curl ${feat.curl.toFixed(0)}°)`;
 }
 
 function sideFrame(ts) {
@@ -494,13 +560,15 @@ function setMode(m) {
   $$("#followMode button").forEach(b => b.classList.toggle("on", b.dataset.mode === m));
   $("#armHelp").hidden = m !== "arm";
   $("#sideHelp").hidden = m !== "side";
+  $("#joyHelp").hidden = m !== "joy";
+  $("#baseBox").hidden = m !== "side" && m !== "joy";
   $("#handHelp").hidden = m !== "hand";
   $("#handNeutral").hidden = m !== "hand";
   release();
 }
 
 listCameras().catch(() => {});
-setMode("side");
+setMode("joy");
 $$("#followMode button").forEach(b => (b.onclick = () => setMode(b.dataset.mode)));
 $("#armSide").onchange = () => release();
 $("#handCamSel").onchange = () => { if (running) { stopCamera(); startCamera(); } };
@@ -515,7 +583,7 @@ $("#handFollow").onchange = e => {
   release();                                                   // (re)engage on the next steady frames
   if (!e.target.checked) return;
   if (!ready()) { e.target.checked = false; toast("Connect the arm (or the simulated one) first"); return; }
-  if (mode === "side" && S && S.measured) {                   // work in the plane the robot already faces
+  if ((mode === "side" || mode === "joy") && S && S.measured) {   // work in the plane the robot already faces
     const p = Math.round(clamp(S.measured.shoulder_pan, -75, 75));
     $("#planePan").value = p; $("#planePan").closest(".slider").querySelector("output").textContent = `${p}°`;
     api("goto", { pose: { shoulder_pan: p, ...READY }, duration: READY_S })   // then the clutch engages there

@@ -38,7 +38,10 @@ Options: `--profile NAME` (framework profile, default `my_so101`), `--port 8000`
 - **Keyboard**: `Q/E W/S A/D Z/X R/F T/G` joints, arrows + PgUp/PgDn tool, Shift boost, 1/2/3 speed
 - **Gamepad**: same layout as the old `gamepad_control.py` (sticks pan/lift and roll/flex, LB/RB
   elbow, triggers gripper, Y boost, A home), Back switches to tool mode
-- **Hand** (camera, MediaPipe in the browser), three modes:
+- **Hand** (camera, MediaPipe in the browser), four modes:
+  - **Hand joystick** (default, most reliable): hand tracking only. Hand left/right = gripper reach
+    (15-33 cm), up/down = height (table to 15 cm), fist/open = gripper; the gripper points straight
+    down and the base stays at a slider. A box on the video shows the reach.
   - **Side view** (default): stand side-on; the robot works in one vertical plane (base set by a slider)
     and its gripper follows your hand's reach/height in arm lengths, your hand's angle and your fingers
     (fist = close). Steadiest, since the arm is seen in profile.

@@ -55,7 +55,7 @@ MIMIC_SPEEDUP = 2.0              # copied joints follow a bit slower than the ha
 READ_MISS_MAX = 10               # consecutive lost position reads (0.2 s) before it counts as an error
 HAND_SPEEDUP = 3.0               # hand following uses the preset joint speed x this (it is pre-smoothed)
 HAND_TIMEOUT_S = 0.5             # no hand frame for this long -> the arm holds where it is
-HAND_BOX = {"r": (0.12, 0.33), "z": (0.02, 0.30), "pitch": (-90.0, 30.0), "pan": (-90.0, 90.0)}
+HAND_BOX = {"r": (0.12, 0.33), "z": (0.008, 0.30), "pitch": (-90.0, 30.0), "pan": (-90.0, 90.0)}   # z: the profile grasps a cube at 12 mm
 HAND_MAX_ERR = 0.015             # IK further than this from the hand target -> keep the last pose
 
 
@@ -490,7 +490,13 @@ class Controller:
                 goal = self._rate_limit(dt)
                 self._stall_guard(m, goal)
         if goal is not None:
-            self.backend.write(goal)
+            try:
+                self.backend.write(goal)   # lerobot reads the positions again inside (max_relative_target)
+            except ConnectionError:
+                self._misses += 1          # same tolerance as the read above: next tick sends the goal again
+                if self._misses >= READ_MISS_MAX:
+                    raise
+                return
         self.backend.poll_telemetry()
         if then == "close":
             with self.lock:

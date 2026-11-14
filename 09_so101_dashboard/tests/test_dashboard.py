@@ -98,7 +98,7 @@ def test_hand_input_reaches_target_and_clamps(ctl):
     assert abs(math.hypot(x, y) - 0.22) < 0.01 and abs(z - 0.12) < 0.01
     assert abs(s["measured"]["gripper"] - 60) < 2 and s["owner"] == "hand"
     out = ctl.hand_input(pan=500, r=9, z=-1, pitch=-200, roll=500)
-    assert (out["pan"], out["r"], out["z"], out["pitch"]) == (90.0, 0.33, 0.02, -90.0)
+    assert (out["pan"], out["r"], out["z"], out["pitch"]) == (90.0, 0.33, 0.008, -90.0)
     assert ctl.snapshot()["target"]["wrist_roll"] == 75.0
 
 
@@ -163,6 +163,19 @@ def test_lost_position_reads_do_not_raise(ctl):
             raise ConnectionError("There is no status packet!")
         return real()
     ctl.backend.read = flaky
+    time.sleep(0.3)
+    s = ctl.snapshot()
+    assert s["state"] == "ready" and s["error"] == ""
+
+
+def test_lost_packets_while_sending_do_not_raise(ctl):
+    real, misses = ctl.backend.write, iter(range(3))
+
+    def flaky(goal):
+        if next(misses, None) is not None:
+            raise ConnectionError("Failed to sync read 'Present_Position' ... There is no status packet!")
+        return real(goal)
+    ctl.backend.write = flaky
     time.sleep(0.3)
     s = ctl.snapshot()
     assert s["state"] == "ready" and s["error"] == ""
