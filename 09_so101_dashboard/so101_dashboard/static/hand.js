@@ -31,8 +31,11 @@ async function startCamera() {
         minHandDetectionConfidence: 0.6, minTrackingConfidence: 0.6 });
     }
     $("#handMsg").textContent = "Allow the camera in the browser prompt…";
-    video.srcObject = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480, facingMode: "user" } });
+    const dev = $("#handCamSel").value;
+    video.srcObject = await navigator.mediaDevices.getUserMedia({
+      video: { width: 640, height: 480, ...(dev ? { deviceId: { exact: dev } } : { facingMode: "user" }) } });
     await video.play();
+    await listCameras();                                       // labels are only visible after permission
     running = true;
     $("#handCam").textContent = "Stop camera";
     $("#handNeutral").disabled = false;
@@ -152,6 +155,15 @@ async function send(t) {
 }
 
 // ------------------------------------------------------------------ controls
+async function listCameras() {
+  const sel = $("#handCamSel"), keep = sel.value || video.srcObject?.getVideoTracks()[0]?.getSettings().deviceId || "";
+  const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput");
+  sel.innerHTML = `<option value="">Default camera</option>` +
+    cams.map((d, i) => `<option value="${d.deviceId}">${escapeHtml(d.label || `Camera ${i + 1}`)}</option>`).join("");
+  if (cams.some(d => d.deviceId === keep)) sel.value = keep;
+}
+listCameras().catch(() => {});
+$("#handCamSel").onchange = () => { if (running) { stopCamera(); startCamera(); } };
 $("#handCam").onclick = () => (running ? stopCamera() : startCamera());
 $("#handNeutral").onclick = () => { if (feat) { neutral = { ...feat }; toast("Neutral set: this hand pose = arm's middle pose"); } };
 $("#handFollow").onchange = e => {

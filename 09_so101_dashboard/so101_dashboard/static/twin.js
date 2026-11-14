@@ -123,7 +123,7 @@ const Twin = (() => {
     }
 
     function partColor(p) {
-      if (p.kind === "motor") return COLORS.motor;
+      if (p.kind === "motor" || p.kind === "placeholder") return COLORS.motor;
       if (/motor_holder/.test(p.part)) return COLORS.holder;
       return COLORS.printed;
     }

@@ -42,6 +42,18 @@ def test_link_frames_agree_with_fk():
     assert "moving_jaw_so101_v1_link" in F
 
 
+def test_wrist_camera_rides_on_the_gripper():
+    a = dict(WORK)
+    F1 = link_frames(a)
+    F2 = link_frames({**a, "wrist_roll": 60.0})
+    for n in ("wrist_camera_mount_link", "wrist_camera_link"):
+        rel1 = np.linalg.inv(F1["gripper_link"]) @ F1[n]
+        rel2 = np.linalg.inv(F2["gripper_link"]) @ F2[n]
+        assert np.allclose(rel1, rel2)                      # fixed to the gripper
+    assert not np.allclose(F1["wrist_camera_link"], F2["wrist_camera_link"])
+    assert np.allclose(F1["gripper_frame_link"], K.fk(a))   # tool point unchanged by the camera
+
+
 def test_twin_mesh_is_shipped_and_matches_urdf():
     m = mesh.load()
     assert m is not None, "static/twin_mesh.json missing"
