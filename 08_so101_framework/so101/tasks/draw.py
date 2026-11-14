@@ -114,8 +114,17 @@ class Drawer:
 
     # -- motion helpers
     def solve(self, xyz, seed=None, tip=False):
-        return K.pen_ik(xyz, seed or self.arm.angles(), self.pen_dir, roll_limits=self.roll_lim,
-                        length=self.length if tip else 0.0)
+        seed = seed or self.arm.angles()
+        L = self.length if tip else 0.0
+        try:
+            return K.pen_ik(xyz, seed, self.pen_dir, roll_limits=self.roll_lim, length=L)
+        except RuntimeError:
+            # near a hand-placed pose the multi-seed search can miss (or leave the roll range the
+            # person put the wrist in); a close single-seed solution from where the arm is will do
+            A, err, vert = K.pen_ik_local(xyz, seed, self.pen_dir, length=L)
+            if err < 0.004 and vert > 0.9:
+                return A
+            raise
 
     def goto(self, xyz, duration=2.0, tip=False):
         A = self.solve(xyz, tip=tip)
@@ -267,8 +276,10 @@ class Drawer:
         self.samples, self.coef = [(float(center[0]), float(center[1]), paper_z)], [0.0, 0.0, paper_z]
         self.prof.save_measured("pen", {"pen_dir_tool": [round(float(v), 3) for v in self.pen_dir]})
         self.sess.event("hand_placed", center_mm=[round(v * 1000) for v in center], tool_z_mm=round(tool_z * 1000, 1))
+        roll = a["wrist_roll"]                                    # allow the roll the person chose
+        self.roll_lim = (min(self.roll_lim[0], roll - 10), max(self.roll_lim[1], roll + 10))
         self.sess.ask("got it - you can let go of the arm, then 'go' (the pen lifts off the paper)", ["go"])
-        self.line((*center, tool_z + self.d["lift"]), speed=0.01)
+        self.goto((*center, tool_z + self.d["lift"]), duration=1.0)
 
     def draw(self, name, size_mm):
         size_mm = min(size_mm, self.d["max_size_mm"])
@@ -329,7 +340,10 @@ def main(a, prof, sess):
         dr.load_pen()
         dr.hand_place()
         while True:
-            dr.goto((*dr.center, plane_z(dr.coef, dr.center) + dr.length + 0.04), duration=1.5)
+            try:
+                dr.goto((*dr.center, plane_z(dr.coef, dr.center) + dr.length + 0.04), duration=1.5)
+            except RuntimeError as e:                              # stay at the menu instead of crashing
+                sess.event("error", message=str(e)); sess.say(f"ERROR {e}")
             c = sess.ask("'draw <shape> <size_mm>' (" + " ".join(SHAPES) + "), 'drawfile <name> [size_mm]', 'level <size_mm>', "
                          "'press <mm>', 'speed <mm/s>', 'move <away_mm> <left_mm>', 'place', 'probe', 'quit'",
                          ["draw <shape> <size_mm>", "drawfile <name>", "level 60", "press <mm>", "speed <mm/s>",
