@@ -23,7 +23,7 @@ so101-robot = "so101_dashboard.robot_cli:main"
 include = ["so101_dashboard*"]
 
 [tool.setuptools.package-data]
-so101_dashboard = ["static/*"]
+so101_dashboard = ["static/*", "static/brand/*", "static/fonts/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

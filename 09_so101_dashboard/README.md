@@ -72,13 +72,15 @@ Options: `--profile NAME` (framework profile, default `my_so101`), `--port 8000`
 | `so101_dashboard/server.py` | HTTP API + Server-Sent Events (live state ~20×/s), standard library only |
 | `so101_dashboard/frames.py` | pose of every URDF link for the twin |
 | `so101_dashboard/mesh.py` | builds `static/twin_mesh.json` from the STL parts (already built and committed) |
-| `so101_dashboard/static/` | the page: `index.html`, `app.js` (UI, keyboard, gamepad), `twin.js` (WebGL) |
+| `so101_dashboard/static/` | the page: `index.html` + `style.css` (RoboticGen theme, one fixed screen), `app.js` (state, jog, keyboard, gamepad), `ui.js` (keyboard / gamepad maps, status tags on the 3D model, Draw chooser), `twin.js` (WebGL), `tasks.js` / `studio.js` (procedures, motions, record, drawing, cameras) |
 
 ## More tabs
 
-- **Draw**: runs the framework's tested pen-drawing procedure (`so101 draw`) from the page: load the
-  pen, tilt check, height jog/touch, level the paper, then shape buttons (square, circle, star, spiral,
-  smiley, house) with a size slider.
+- **Draw** – three steps, *Choose → Check in 3D → Draw on paper*. Choose a shape (square, circle, star,
+  spiral, smiley, house), sketch one in the box, or drop a picture. **Check in 3D** plans every stroke
+  exactly as the robot will draw it and plays it on the twin. **Draw it on paper** (real arm) starts the
+  framework's drawing procedure (`so101 draw`): load the pen, place it on the paper by hand, and the
+  chosen drawing starts by itself when the robot is ready. The choice is kept across a page reload.
 - **Tasks** / **Calibrate**: the framework's vision tasks (pick & place, basket, clear all, stack,
   report, practice) and calibrations (robot quirks, table, camera lens, object colour). The dashboard
   parks the arm, hands it to the procedure (`so101 --agent ...`), shows each prompt with buttons and an

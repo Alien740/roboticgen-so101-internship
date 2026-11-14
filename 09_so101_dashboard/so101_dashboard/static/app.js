@@ -237,19 +237,16 @@ window.addEventListener("keyup", e => {
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key; held.keys.delete(k);
 });
 window.addEventListener("blur", () => held.keys.clear());
-$("#armKeys").onchange = e => { if (!e.target.checked) held.keys.clear(); e.target.blur(); };
+$("#armKeys").onchange = e => {
+  if (!e.target.checked) held.keys.clear();
+  $("#kbdWrap").classList.toggle("off", !e.target.checked); e.target.blur();
+};
+$("#kbdWrap").classList.add("off");
 
 // gamepad (standard mapping): joint mode keeps the layout of the old gamepad_control.py
 let padMode = "joint", padPrev = [], trig = { lt: false, rt: false };
-const PAD_HELP = {
-  joint: [["Left stick ↔ / ↕", "base pan / shoulder"], ["Right stick ↔ / ↕", "wrist roll / wrist flex"],
-    ["LB / RB", "elbow − / +"], ["LT / RT", "gripper close / open"]],
-  cart: [["Left stick ↕ / ↔", "tool forward / sideways"], ["Right stick ↕", "tool up / down"],
-    ["Right stick ↔", "wrist roll"], ["LB / RB", "wrist flex − / +"], ["LT / RT", "gripper close / open"]],
-  common: [["Y (hold)", "boost ×2"], ["A", "go to home pose"], ["Back / View", "switch joint ↔ tool mode"], ["B", "<b>E-STOP</b> (always)"]],
-};
-function padHelp() {
-  $("#padHelp").innerHTML = [...PAD_HELP[padMode], ...PAD_HELP.common].map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
+function padHelp() {                                   // the gamepad map and its table (ui.js)
+  if (typeof UI !== "undefined") UI.padArt(padMode);
   $$("#padMode button").forEach(b => b.classList.toggle("on", b.dataset.mode === padMode));
 }
 $$("#padMode button").forEach(b => (b.onclick = () => { padMode = b.dataset.mode; padHelp(); }));

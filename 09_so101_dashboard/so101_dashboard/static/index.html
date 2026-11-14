@@ -3,424 +3,451 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SO-101 Dashboard</title>
+<title>SO-101 Robot Lab · RoboticGen</title>
+<link rel="icon" href="brand/roboticgen-obo-dark-bg.svg">
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+
+<!-- ------------------------------------------------------------------ icons -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-control" viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></symbol>
+    <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2.5" y="6" width="19" height="12" rx="2"/><path d="M6 10h.01M10 10h.01M14 10h.01M18 10h.01M6 14h.01M18 14h.01M9 14h6"/></symbol>
+    <symbol id="i-gamepad" viewBox="0 0 24 24"><path d="M7 8h10a5 5 0 0 1 4.6 7l-.6 1.4a2.4 2.4 0 0 1-4 .6L15 15H9l-2 2a2.4 2.4 0 0 1-4-.6L2.4 15A5 5 0 0 1 7 8z"/><path d="M7 11v3M5.5 12.5h3"/><circle cx="16" cy="11.5" r=".6"/><circle cx="18" cy="13.5" r=".6"/></symbol>
+    <symbol id="i-hand" viewBox="0 0 24 24"><path d="M8 12V5.5a1.5 1.5 0 0 1 3 0V11M11 10.5V4a1.5 1.5 0 0 1 3 0v7M14 10.5V5.5a1.5 1.5 0 0 1 3 0V13M17 9.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-1a6 6 0 0 1-4.6-2.2L4 15a1.5 1.5 0 0 1 2.3-1.9L8 15"/></symbol>
+    <symbol id="i-draw" viewBox="0 0 24 24"><path d="M14.5 4.5l5 5L9 20H4v-5z"/><path d="M12.5 6.5l5 5"/></symbol>
+    <symbol id="i-motions" viewBox="0 0 24 24"><path d="M5 19c3-2 4-6 7-6s4 4 7 6M12 13V5M9 8l3-3 3 3"/></symbol>
+    <symbol id="i-record" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/></symbol>
+    <symbol id="i-tasks" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/><path d="M10 6.5h4a3 3 0 0 1 3 3V14"/></symbol>
+    <symbol id="i-calibrate" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/><circle cx="12" cy="12" r="2"/></symbol>
+    <symbol id="i-ai" viewBox="0 0 24 24"><path d="M12 3l1.8 4.6L18.5 9l-4.7 1.4L12 15l-1.8-4.6L5.5 9l4.7-1.4z"/><path d="M18.5 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z"/></symbol>
+    <symbol id="i-status" viewBox="0 0 24 24"><path d="M3 12h4l2.5-6 5 12 2.5-6h4"/></symbol>
+    <symbol id="i-cam" viewBox="0 0 24 24"><rect x="3" y="7" width="13" height="10" rx="2"/><path d="M16 11l5-3v8l-5-3"/></symbol>
+    <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
+    <symbol id="i-tag" viewBox="0 0 24 24"><path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="7.5" r="1.2"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor"/></symbol>
+    <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4"/></symbol>
+    <symbol id="i-cube" viewBox="0 0 24 24"><path d="M12 2.5l8.5 4.8v9.4L12 21.5l-8.5-4.8V7.3z"/><path d="M3.5 7.3L12 12l8.5-4.7M12 12v9.5"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7.5v.01"/></symbol>
+  </defs>
+</svg>
+
+<!-- ------------------------------------------------------------------ header -->
 <header class="topbar">
   <div class="brand">
-    <span class="logo">SO-101</span>
+    <img class="brand-logo" src="brand/roboticgen-light.png" alt="RoboticGen">
+    <span class="brand-sep"></span>
+    <div class="brand-title"><b>SO-101 Robot Lab</b><small>Arm control &amp; simulation platform</small></div>
+  </div>
+  <div class="status-chips">
     <span id="modeBadge" class="badge off">DISCONNECTED</span>
     <span id="ownerPill" class="pill" title="who is driving the arm">idle</span>
   </div>
+  <div class="spacer"></div>
   <div class="conn">
-    <button id="btnSim" class="btn">Simulated arm</button>
-    <button id="btnReal" class="btn primary">Connect real arm</button>
-    <button id="btnDisc" class="btn" hidden>Park &amp; disconnect</button>
+    <button id="btnSim" class="btn ghost"><svg class="ic"><use href="#i-cube"/></svg>Simulated arm</button>
+    <button id="btnReal" class="btn primary"><svg class="ic"><use href="#i-plug"/></svg>Connect real arm</button>
+    <button id="btnDisc" class="btn ghost" hidden>Park &amp; disconnect</button>
   </div>
   <div class="speed seg" role="radiogroup" aria-label="Speed">
     <button data-speed="slow">Slow</button>
     <button data-speed="normal" class="on">Normal</button>
     <button data-speed="fast">Fast</button>
   </div>
-  <label class="toggle" title="Torque off = the arm goes limp so you can move it by hand. Hold it first!">
-    <input type="checkbox" id="torque" checked> <span>Torque</span>
+  <label class="switch" title="Torque off = the arm goes limp so you can move it by hand. Hold it first!">
+    <input type="checkbox" id="torque" checked><i></i><span>Torque</span>
   </label>
-  <button id="btnEstop" class="estop" title="Space or Esc, gamepad B">E-STOP</button>
   <button id="btnReset" class="btn warn" hidden>Reset E-STOP</button>
+  <button id="btnEstop" class="estop" title="Space or Esc · gamepad B"><b>E-STOP</b><small>Space</small></button>
 </header>
 
-<div id="errorBar" class="errorbar" hidden></div>
-
 <main class="layout">
-  <section class="twin card">
-    <div class="twin-head">
-      <h2>3D twin</h2>
-      <button id="btnShow" class="btn small" title="Bigger twin and cameras, for showing the robot to people">🎬 Show mode</button>
-      <div class="seg small" id="views">
-        <button data-view="iso" class="on">3D</button>
-        <button data-view="front">Front</button>
-        <button data-view="side">Side</button>
-        <button data-view="top">Top</button>
+  <!-- ---------------------------------------------------------------- 3D lab viewport -->
+  <section class="viewport">
+    <canvas id="twin"></canvas>
+    <div id="jointTags" class="joint-tags"></div>
+
+    <div class="vp-top">
+      <div class="vp-readout">
+        <div class="ro"><span>Tool</span><b id="toolXyz">–</b></div>
+        <div class="ro"><span>Pitch</span><b id="toolPitch">–</b></div>
+        <div class="ro"><span>Loop</span><b id="rate">–</b></div>
+      </div>
+      <div class="vp-tools">
+        <button id="btnTags" class="chipbtn on" title="Show each motor's angle, temperature and load on the 3D model"><svg class="ic"><use href="#i-tag"/></svg>Status</button>
+        <button id="btnShow" class="chipbtn" title="Bigger cameras, for showing the robot to people"><svg class="ic"><use href="#i-expand"/></svg>Show mode</button>
+        <div class="seg dark small" id="views">
+          <button data-view="iso" class="on">3D</button>
+          <button data-view="front">Front</button>
+          <button data-view="side">Side</button>
+          <button data-view="top">Top</button>
+        </div>
       </div>
     </div>
-    <div class="twin-wrap">
-      <canvas id="twin"></canvas>
-      <div class="twin-overlay">
-        <div><span class="k">tool</span> <span id="toolXyz">–</span></div>
-        <div><span class="k">pitch</span> <span id="toolPitch">–</span></div>
-        <div><span class="k">loop</span> <span id="rate">–</span></div>
-      </div>
-      <div id="twinMsg" class="twin-msg">Loading 3D model…</div>
-      <div id="simHud" class="sim-hud" hidden></div>
-    </div>
+
+    <div id="errorBar" class="errorbar" hidden></div>
+    <div id="twinMsg" class="twin-msg">Loading 3D model…</div>
+    <div id="simHud" class="sim-hud" hidden></div>
     <ul id="warnings" class="warnings"></ul>
 
-    <div class="cams-head">
-      <h2>Cameras</h2>
-      <span class="muted small">live, in this browser – e.g. the overhead webcam and the laptop camera at the side</span>
-    </div>
     <div class="cams">
       <figure class="cam" data-cam="0">
         <video playsinline muted></video>
-        <figcaption><select class="btn small cam-dev"><option value="">camera…</option></select>
-          <button class="btn small cam-go">Start</button></figcaption>
+        <figcaption><select class="cam-dev"><option value="">Camera…</option></select>
+          <button class="chipbtn cam-go">Start</button></figcaption>
+        <span class="cam-name">Camera 1</span>
       </figure>
       <figure class="cam" data-cam="1">
         <video playsinline muted></video>
-        <figcaption><select class="btn small cam-dev"><option value="">camera…</option></select>
-          <button class="btn small cam-go">Start</button></figcaption>
+        <figcaption><select class="cam-dev"><option value="">Camera…</option></select>
+          <button class="chipbtn cam-go">Start</button></figcaption>
+        <span class="cam-name">Camera 2</span>
       </figure>
     </div>
   </section>
 
-  <section class="side card">
-    <nav class="tabs" role="tablist">
-      <button class="tab on" data-tab="manual">Manual</button>
-      <button class="tab" data-tab="status">Status</button>
-      <button class="tab" data-tab="hand">Hand</button>
-      <button class="tab" data-tab="draw">Draw</button>
-      <button class="tab" data-tab="motions">Motions</button>
-      <button class="tab" data-tab="record">Record</button>
-      <button class="tab" data-tab="tasks">Tasks</button>
-      <button class="tab" data-tab="calibrate">Calibrate</button>
-      <button class="tab" data-tab="ai">AI</button>
+  <!-- ---------------------------------------------------------------- control panel -->
+  <section class="panel">
+    <nav class="rail" role="tablist">
+      <button class="tab on" data-tab="manual"><svg class="ic"><use href="#i-control"/></svg><span>Control</span></button>
+      <button class="tab" data-tab="keys"><svg class="ic"><use href="#i-keyboard"/></svg><span>Keyboard</span></button>
+      <button class="tab" data-tab="pad"><svg class="ic"><use href="#i-gamepad"/></svg><span>Gamepad</span></button>
+      <button class="tab" data-tab="hand"><svg class="ic"><use href="#i-hand"/></svg><span>Hand</span></button>
+      <button class="tab" data-tab="draw"><svg class="ic"><use href="#i-draw"/></svg><span>Draw</span></button>
+      <button class="tab" data-tab="motions"><svg class="ic"><use href="#i-motions"/></svg><span>Motions</span></button>
+      <button class="tab" data-tab="record"><svg class="ic"><use href="#i-record"/></svg><span>Record</span></button>
+      <button class="tab" data-tab="tasks"><svg class="ic"><use href="#i-tasks"/></svg><span>Tasks</span></button>
+      <button class="tab" data-tab="calibrate"><svg class="ic"><use href="#i-calibrate"/></svg><span>Calibrate</span></button>
+      <button class="tab" data-tab="ai"><svg class="ic"><use href="#i-ai"/></svg><span>AI</span></button>
+      <button class="tab" data-tab="status"><svg class="ic"><use href="#i-status"/></svg><span>Status</span></button>
     </nav>
 
-    <div class="tabpane" id="tab-manual">
-      <h3>Poses</h3>
-      <div id="poses" class="row wrap"></div>
+    <div class="panes">
+      <div id="needArm" class="need" hidden></div>
 
-      <h3>Joints <small>drag a slider; the arm follows at the chosen speed</small></h3>
-      <div id="sliders" class="sliders"></div>
-
-      <h3>Gripper</h3>
-      <div class="row">
-        <button class="btn" id="gripOpen">Open</button>
-        <button class="btn" id="gripClose">Close</button>
-        <small class="muted">a stalled grip is eased off automatically (protects the motor)</small>
+      <!-- ============================================================== CONTROL -->
+      <div class="tabpane" id="tab-manual">
+        <header class="pane-head"><h2>Control</h2><p>Drag a joint, pick a pose or jog the tool. The arm follows at the chosen speed.</p></header>
+        <div class="sect">
+          <h3>Poses</h3>
+          <div id="poses" class="row wrap"></div>
+        </div>
+        <div class="sect grow">
+          <h3>Joints <small>the dot shows where the motor really is</small></h3>
+          <div id="sliders" class="sliders"></div>
+        </div>
+        <div class="sect two">
+          <div>
+            <h3>Gripper</h3>
+            <div class="row"><button class="btn" id="gripOpen">Open</button><button class="btn" id="gripClose">Close</button></div>
+            <p class="hint">A stalled grip is eased off by itself to protect the motor.</p>
+          </div>
+          <div>
+            <h3>Move the tool <small>hold to move in straight lines</small></h3>
+            <div class="cartpad">
+              <div class="pad">
+                <span></span><button class="jog" data-cart="x:1" title="Forward">▲<small>fwd</small></button><span></span>
+                <button class="jog" data-cart="y:1" title="Left">◀<small>left</small></button><span class="pad-c">XY</span><button class="jog" data-cart="y:-1" title="Right">▶<small>right</small></button>
+                <span></span><button class="jog" data-cart="x:-1" title="Back">▼<small>back</small></button><span></span>
+              </div>
+              <div class="pad z">
+                <button class="jog" data-cart="z:1" title="Up">▲<small>up</small></button>
+                <span class="pad-c">Z</span>
+                <button class="jog" data-cart="z:-1" title="Down">▼<small>down</small></button>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <h3>Move the tool <small>hold a button: straight lines, pitch kept</small></h3>
-      <div class="cartpad">
-        <div class="pad">
-          <span></span><button class="jog" data-cart="x:1">X+ fwd</button><span></span>
-          <button class="jog" data-cart="y:1">Y+ left</button><span class="pad-c">XY</span><button class="jog" data-cart="y:-1">Y− right</button>
-          <span></span><button class="jog" data-cart="x:-1">X− back</button><span></span>
-        </div>
-        <div class="pad z">
-          <button class="jog" data-cart="z:1">Z+ up</button>
-          <span class="pad-c">Z</span>
-          <button class="jog" data-cart="z:-1">Z− down</button>
-        </div>
+      <!-- ============================================================== KEYBOARD -->
+      <div class="tabpane" id="tab-keys" hidden>
+        <header class="pane-head"><h2>Keyboard</h2><p>Turn it on, then hold the coloured keys. Space or Esc is always E-STOP.</p></header>
+        <label class="switch big"><input type="checkbox" id="armKeys"><i></i><span>Keyboard control</span></label>
+        <div class="kbd-wrap" id="kbdWrap"></div>
+        <div class="legend" id="kbdLegend"></div>
       </div>
 
-      <h3>Keyboard &amp; gamepad</h3>
-      <div class="inputs">
-        <div class="input-card">
-          <label class="toggle"><input type="checkbox" id="armKeys"> <span>Keyboard control</span></label>
-          <table class="keys">
-            <tr><td><kbd>Q</kbd><kbd>E</kbd></td><td>base pan</td><td><kbd>↑</kbd><kbd>↓</kbd></td><td>tool fwd/back</td></tr>
-            <tr><td><kbd>W</kbd><kbd>S</kbd></td><td>shoulder</td><td><kbd>←</kbd><kbd>→</kbd></td><td>tool left/right</td></tr>
-            <tr><td><kbd>A</kbd><kbd>D</kbd></td><td>elbow</td><td><kbd>PgUp</kbd><kbd>PgDn</kbd></td><td>tool up/down</td></tr>
-            <tr><td><kbd>Z</kbd><kbd>X</kbd></td><td>wrist flex</td><td><kbd>Shift</kbd></td><td>boost ×2</td></tr>
-            <tr><td><kbd>R</kbd><kbd>F</kbd></td><td>wrist roll</td><td><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd></td><td>speed</td></tr>
-            <tr><td><kbd>T</kbd><kbd>G</kbd></td><td>grip close/open</td><td><kbd>Space</kbd><kbd>Esc</kbd></td><td><b>E-STOP</b> (always)</td></tr>
-          </table>
-        </div>
-        <div class="input-card">
-          <label class="toggle"><input type="checkbox" id="armPad"> <span>Gamepad control</span></label>
-          <div id="padStatus" class="muted">No gamepad – plug one in and press any button.</div>
+      <!-- ============================================================== GAMEPAD -->
+      <div class="tabpane" id="tab-pad" hidden>
+        <header class="pane-head"><h2>Gamepad</h2><p>Plug in a controller and press any button. B is always E-STOP.</p></header>
+        <div class="row between">
+          <label class="switch big"><input type="checkbox" id="armPad"><i></i><span>Gamepad control</span></label>
           <div class="seg small" id="padMode">
             <button data-mode="joint" class="on">Joint mode</button>
             <button data-mode="cart">Tool mode</button>
           </div>
-          <table class="keys" id="padHelp"></table>
         </div>
+        <div id="padStatus" class="hint">No gamepad – plug one in and press any button.</div>
+        <div class="pad-wrap" id="padWrap"></div>
+        <table class="keys" id="padHelp"></table>
       </div>
-    </div>
 
-    <div class="tabpane" id="tab-draw" hidden>
-      <h3>Draw with a pen <small>step by step – the robot holds a pen and draws on an A4 sheet</small></h3>
-
-      <div id="drawSetup">
-        <div class="drawsetup">
-          <svg viewBox="0 0 220 250" class="a4map" role="img" aria-label="Where to put the A4 sheet">
-            <rect x="15" y="12" width="190" height="134" rx="2" class="sheet"/>
-            <text x="110" y="30" class="lbl">A4 sheet, landscape (29.7 × 21 cm)</text>
-            <line x1="15" y1="155" x2="205" y2="155" class="dim"/><text x="110" y="166" class="lbl">centred left–right</text>
-            <circle cx="110" cy="72" r="16" class="draw"/><circle cx="110" cy="72" r="2.5" class="dot"/>
-            <text x="110" y="100" class="lbl">drawing spot</text>
-            <line x1="200" y1="72" x2="200" y2="232" class="dim"/><text x="196" y="190" class="lbl r">28 cm</text>
-            <line x1="22" y1="146" x2="22" y2="232" class="dim"/><text x="27" y="200" class="lbl l">≈17 cm</text>
-            <rect x="85" y="210" width="50" height="34" rx="6" class="base"/><text x="110" y="231" class="lbl">ROBOT</text>
-            <path d="M110 206 L110 182" class="arrow"/><text x="116" y="190" class="lbl l">front</text>
-          </svg>
-          <ol class="steps">
-            <li>Tape an <b>A4 sheet</b> down <b>sideways (landscape)</b>, centred in front of the robot, its near edge
-              <b>about 17 cm</b> from the base (the drawing spot is 28 cm out).</li>
-            <li>Have a <b>felt-tip pen</b> ready, cap off.</li>
-            <li>Speed doesn't matter – drawing uses its own slow, careful speed.</li>
-            <li>Press <b>Start drawing</b>. The robot parks, then opens its gripper for the pen.</li>
-            <li>After it grips the pen, the arm goes limp and <b>you place the pen on the paper by hand</b> – that spot
-              is where it draws. Then pick a shape or sketch your own.</li>
-          </ol>
+      <!-- ============================================================== HAND -->
+      <div class="tabpane" id="tab-hand" hidden>
+        <header class="pane-head"><h2>Hand control</h2><p>The robot follows your hand through this computer's camera.</p></header>
+        <div class="seg full" id="followMode" role="radiogroup" aria-label="What the robot follows">
+          <button data-mode="joy" class="on">Hand joystick</button>
+          <button data-mode="side">Side view</button>
+          <button data-mode="arm">Whole arm</button>
+          <button data-mode="hand">My hand</button>
         </div>
-        <button class="btn primary task-start" data-task="draw">✎ Start drawing</button>
-      </div>
-
-      <div id="drawWizard" hidden>
-        <ol class="stepper" id="drawStepper"></ol>
-        <div class="wizcard" id="drawCard"></div>
-      </div>
-
-      <div class="pic card-in" id="picPanel">
-        <h4>Draw a picture <small class="muted">upload → see the lines → watch the 3D dry run → draw it</small></h4>
-        <label class="drop" id="picDrop">
-          <input type="file" id="picFile" accept="image/*" hidden>
-          <span>Drop a picture here, paste one (⌘V), or <u>choose a file</u>. Line drawings and simple sketches work best.</span>
-        </label>
-        <div class="row wrap pic-opts">
-          <div class="seg small" id="picMode">
-            <button data-m="lines" class="on" title="Line art, sketches, logos, text">Sketch</button>
-            <button data-m="photo" title="Outlines from a photo">Photo</button>
-            <button data-m="shade" title="Sketch + hatching where the picture is dark (takes longer)">Shaded</button>
-          </div>
-          <label class="mini">Detail <input type="range" id="picDetail" min="0" max="1" step="0.05" value="0.5"></label>
-          <label class="toggle small" title="As big as the sheet allows while the pen stays upright"><input type="checkbox" id="picFill" checked> <span>Fill the sheet</span></label>
-          <label class="mini">Size <input type="range" id="picSize" min="40" max="270" step="10" value="120" disabled> <output id="picSizeOut">auto</output></label>
+        <div class="hand-view">
+          <video id="handVideo" playsinline muted></video>
+          <canvas id="handCanvas"></canvas>
+          <div id="handMsg" class="hand-msg">Camera off</div>
         </div>
-        <div class="pic-view" id="picView" hidden>
-          <canvas id="picCanvas" width="600" height="420"></canvas>
-          <div class="pic-stats" id="picStats"></div>
-          <div class="row wrap">
-            <button class="btn" id="picSim">▶ Simulate in 3D</button>
-            <div class="seg small" id="picSpeed"><button data-x="5">5×</button><button data-x="10" class="on">10×</button><button data-x="30">30×</button></div>
-            <button class="btn primary" id="picDraw">✎ Draw it on paper</button>
-            <label class="toggle small"><input type="checkbox" id="picShowImg" checked> <span>show picture</span></label>
-          </div>
-          <p class="muted small" id="picNote"></p>
-        </div>
-      </div>
-
-      <details class="drawlog"><summary>Details (what the drawing program says)</summary><div class="session"></div></details>
-    </div>
-
-    <div class="tabpane" id="tab-motions" hidden>
-      <h3>Motions <small>connect the arm first; any other control interrupts</small></h3>
-      <div class="row wrap" id="motionButtons"></div>
-      <div class="row wrap">
-        <label class="toggle">Speed <select id="motionSpeed" class="btn"><option value="0.5">slow ×0.5</option><option value="1" selected>normal</option><option value="1.5">fast ×1.5</option></select></label>
-        <button class="btn warn" id="motionStop">Stop</button>
-      </div>
-      <p class="muted" id="playState"></p>
-    </div>
-
-    <div class="tabpane" id="tab-record" hidden>
-      <h3>Record &amp; replay <small>teach a movement, then play it back</small></h3>
-      <p class="muted"><b>Record by hand</b> (ticked): the motors switch off so you can move the arm yourself – hold it
-        when you press Record; <b>Stop &amp; save</b> switches them back on and the arm holds where you left it.
-        Untick it to record moves made with the sliders, hand joystick or AI instead. Replays start from the first
-        recorded pose.</p>
-      <div class="row wrap">
-        <label class="toggle"><input type="checkbox" id="recByHand" checked> <span>Record by hand</span></label>
-        <input id="recName" class="btn" placeholder="name, e.g. pick-left" maxlength="40">
-        <button class="btn primary" id="recBtn">● Record</button>
-        <span id="recState" class="muted"></span>
-      </div>
-      <h3>Recordings</h3>
-      <div class="row wrap">
-        <label class="toggle">Replay speed <select id="recSpeed" class="btn"><option value="0.5">×0.5</option><option value="1" selected>×1</option><option value="1.5">×1.5</option><option value="2">×2</option></select></label>
-      </div>
-      <table class="motors" id="recList"></table>
-    </div>
-
-    <div class="tabpane" id="tab-tasks" hidden>
-      <h3>Vision tasks <small>need the overhead USB camera and a table calibration (Calibrate tab)</small></h3>
-      <div class="row wrap">
-        <label class="toggle">Trials <input id="taskTrials" class="btn" type="number" min="1" max="20" value="3" style="width:64px"></label>
-      </div>
-      <div class="row wrap">
-        <button class="btn task-start" data-task="pick-place" data-trials="1">Pick &amp; place</button>
-        <button class="btn task-start" data-task="basket" data-trials="1">Cube → basket</button>
-        <button class="btn task-start" data-task="multi">Clear all objects</button>
-        <button class="btn task-start" data-task="stack" data-hover="1">Stack (hover check)</button>
-        <button class="btn task-start" data-task="stack">Stack</button>
-        <button class="btn task-start" data-task="report">Report</button>
-        <button class="btn task-start" data-task="demo">Practice (nothing moves)</button>
-      </div>
-      <div class="session"></div>
-    </div>
-
-    <div class="tabpane" id="tab-calibrate" hidden>
-      <h3>Calibrate <small>the framework's procedures; each tells you what to do</small></h3>
-      <table class="keys">
-        <tr><td><button class="btn task-start" data-task="measure">Measure robot quirks</button></td><td>once per robot: wrist range, gripper, camera latency (moves the arm – clear the table)</td></tr>
-        <tr><td><button class="btn task-start" data-task="calibrate-table">Table (camera → robot)</button></td><td>after the overhead camera moved; ~12 min, you place the cube once</td></tr>
-        <tr><td><button class="btn task-start" data-task="calibrate-camera">Camera lens</button></td><td>optional: hold a printed 9×6 checkerboard in view</td></tr>
-        <tr><td><button class="btn task-start" data-task="calibrate-hsv">Object colour</button>
-          <select id="hsvColor" class="btn"><option>orange</option><option>yellow</option><option>red</option><option>green</option><option>blue</option></select></td><td>new object or lighting</td></tr>
-      </table>
-      <p class="muted">Motor calibration (the joints' zero points) is a terminal step – see CALIBRATE_AND_START.md.
-        Vision steps need the overhead camera and macOS camera permission for the app that runs the dashboard.</p>
-      <div class="session"></div>
-    </div>
-
-    <div class="tabpane" id="tab-ai" hidden>
-      <h3>AI <small>tell the arm what to do; Claude plans it with safe moves</small></h3>
-      <div id="aiProblem" class="prompt" hidden></div>
-      <div id="aiLog" class="ailog"></div>
-      <div class="row">
-        <input id="aiText" class="btn" style="flex:1" maxlength="1000"
-          placeholder="e.g. wave hello, then pick up the cube 25 cm in front and put it 10 cm to the left">
-        <button class="btn primary" id="aiSend">Send</button>
-        <button class="btn warn" id="aiStop">Stop</button>
-        <button class="btn" id="aiReset" title="forget the conversation">New chat</button>
-      </div>
-      <div class="row wrap" id="aiExamples">
-        <button class="btn ai-ex">Wave hello</button>
-        <button class="btn ai-ex">Go to the ready pose and open the gripper</button>
-        <button class="btn ai-ex">Pick up the cube 22 cm straight ahead and put it 25 cm away, 10 cm to the left</button>
-        <button class="btn ai-ex">Where is the gripper now?</button>
-      </div>
-      <p class="muted">Connect the arm first and start on <b>Slow</b>. Claude (Opus 5.5) can only use the dashboard's own
-        moves – limits, the table floor, the gripper guard and <b>E-STOP</b> (Space) still apply; Stop ends it at the next
-        step. It can't see, so say where objects are (distance from the base, left/right). Uses your Claude login
-        (Claude Code, <code>claude auth login</code>), or an <code>ANTHROPIC_API_KEY</code> if the dashboard was started with one.</p>
-    </div>
-
-    <div class="tabpane" id="tab-status" hidden>
-      <h3>Motors</h3>
-      <table class="motors">
-        <thead><tr><th>#</th><th>joint</th><th>pos</th><th>goal</th><th>°C</th><th>V</th><th>load</th><th>torque</th><th>faults</th></tr></thead>
-        <tbody id="motorRows"></tbody>
-      </table>
-      <p class="muted" id="motorNote"></p>
-
-      <h3>This computer</h3>
-      <dl id="sysInfo" class="kv"></dl>
-
-      <h3>Doctor <small>read-only health check (needs the arm disconnected)</small></h3>
-      <button class="btn" id="btnDoctor">Run doctor</button>
-      <pre id="doctorOut" class="console" hidden></pre>
-    </div>
-    <div class="tabpane" id="tab-hand" hidden>
-      <h3>Hand / arm control <small>the robot follows you through this computer's camera</small></h3>
-      <div class="seg" id="followMode" role="radiogroup" aria-label="What the robot follows">
-        <button data-mode="joy" class="on">Hand joystick</button>
-        <button data-mode="side">Side view</button>
-        <button data-mode="arm">Front: whole arm</button>
-        <button data-mode="hand">My hand</button>
-      </div>
-      <div class="hand-view">
-        <video id="handVideo" playsinline muted></video>
-        <canvas id="handCanvas"></canvas>
-        <div id="handMsg" class="hand-msg">Camera off</div>
-      </div>
-      <div class="row wrap">
-        <select id="handCamSel" class="btn" title="which camera to use"><option value="">Default camera</option></select>
-        <button class="btn" id="handCam">Start camera</button>
-        <button class="btn" id="handNeutral" disabled title="hand mode: tie this hand pose to where the arm is now">Set neutral</button>
-        <label class="toggle"><input type="checkbox" id="handFollow" disabled> <span><b>Follow me</b> (robot moves)</span></label>
-      </div>
-      <dl class="kv hand-read">
-        <dt>tracking</dt><dd id="hrSeen">–</dd>
-        <dt>base pan</dt><dd id="hrPan">–</dd>
-        <dt>reach</dt><dd id="hrR">–</dd>
-        <dt>height</dt><dd id="hrZ">–</dd>
-        <dt>tool pitch</dt><dd id="hrPitch">–</dd>
-        <dt>wrist roll</dt><dd id="hrRoll">–</dd>
-        <dt>gripper</dt><dd id="hrGrip">–</dd>
-      </dl>
-
-      <div id="joyHelp">
-        <h3>How to move <small>sit facing the laptop, hand 40–60 cm from the camera, palm toward it</small></h3>
-        <table class="keys">
-          <tr><td>hand left / right</td><td>gripper near the base (15 cm) / far out (33 cm)</td></tr>
-          <tr><td>hand down / up</td><td>gripper at the table / 15 cm up</td></tr>
-          <tr><td>make a fist / open your hand</td><td>gripper closes fully / opens</td></tr>
-          <tr><td>(always)</td><td>gripper points straight down</td></tr>
-          <tr><td>hand leaves the picture</td><td>robot holds still</td></tr>
-          <tr><td><kbd>Space</kbd> / <kbd>Esc</kbd></td><td><b>E-STOP</b> (always)</td></tr>
-        </table>
-        <p class="muted">The box on the video is the robot's reach: keep your hand inside it. Only hand tracking is used
-          (the most precise model). Following first moves the robot to a ready pose above the table, then eases into
-          your hand's position.</p>
-      </div>
-
-      <div id="sideHelp" hidden>
-        <h3>How to move <small>stand or sit SIDEWAYS to the camera, so it sees your arm in profile</small></h3>
-        <table class="keys">
-          <tr><td>raise your upper arm forward / lower it</td><td>robot shoulder leans out / back</td></tr>
-          <tr><td>straighten your elbow / bend it (forearm up)</td><td>robot forearm goes down / up</td></tr>
-          <tr><td>bend your hand down / up</td><td>gripper points down / up</td></tr>
-          <tr><td>curl your fingers into a fist / open them</td><td>gripper closes fully / opens</td></tr>
-          <tr><td>Base direction slider</td><td>turns the plane the robot works in</td></tr>
-          <tr><td>arm leaves the picture</td><td>robot holds still</td></tr>
-          <tr><td><kbd>Space</kbd> / <kbd>Esc</kbd></td><td><b>E-STOP</b> (always)</td></tr>
-        </table>
-        <p class="muted">Your upper arm, elbow and hand drive the robot's shoulder, elbow and wrist in one vertical plane
-          (base fixed at the slider, + = the robot's right). When you tick Follow, your current arm shape is tied to the
-          robot's current pose and only your movements from there move it, so it never jumps. Each joint stays in a
-          safe range and the gripper never goes below the table. It finds which way you face and which arm is nearer
-          the camera by itself.</p>
-      </div>
-
-      <div id="armHelp" hidden>
-        <h3>How to move <small>stand back so the camera sees your shoulders and your whole arm</small></h3>
-        <table class="keys">
-          <tr><td>hand out in front / close to your body</td><td>gripper reaches out (33 cm) / comes near the base (15 cm)</td></tr>
-          <tr><td>hand down at your hip / up at your shoulder</td><td>gripper at the table / 15 cm up</td></tr>
-          <tr><td>hand to your left / right</td><td>base turns</td></tr>
-          <tr><td>hand pointing down / level</td><td>gripper points down / forward</td></tr>
-          <tr><td>turn your hand (palm down ↔ sideways)</td><td>wrist roll</td></tr>
-          <tr><td>make a fist / open your hand</td><td>gripper closes / opens</td></tr>
-          <tr><td>arm leaves the picture</td><td>robot holds still</td></tr>
-          <tr><td><kbd>Space</kbd> / <kbd>Esc</kbd></td><td><b>E-STOP</b> (always)</td></tr>
-        </table>
-        <p class="muted">Your reach is scaled onto the robot's picking area (15–33 cm out, table to 25 cm up), measured in
-          your own arm lengths. The gripper stops at the edge of reach and never goes below the table.</p>
         <div class="row wrap">
-          <label class="toggle">Arm <select id="armSide" class="btn"><option value="right">right</option><option value="left">left</option></select></label>
+          <select id="handCamSel" title="which camera to use"><option value="">Default camera</option></select>
+          <button class="btn" id="handCam">Start camera</button>
+          <button class="btn" id="handNeutral" disabled title="hand mode: tie this hand pose to where the arm is now">Set neutral</button>
+          <label class="switch"><input type="checkbox" id="handFollow" disabled><i></i><span><b>Follow me</b></span></label>
         </div>
-      </div>
-
-      <div id="handHelp" hidden>
-        <h3>How to move</h3>
-        <table class="keys">
-          <tr><td>hand left / right</td><td>base turns</td></tr>
-          <tr><td>hand up / down</td><td>tool up / down</td></tr>
-          <tr><td>hand toward / away from camera</td><td>tool reaches out / pulls back</td></tr>
-          <tr><td>tilt fingers toward / away from camera</td><td>tool points down / up</td></tr>
-          <tr><td>rotate hand (like a doorknob)</td><td>wrist roll</td></tr>
-          <tr><td>make a fist / open your hand</td><td>gripper closes / opens</td></tr>
-          <tr><td>hand leaves the picture</td><td>arm holds still</td></tr>
-          <tr><td><kbd>Space</kbd> / <kbd>Esc</kbd></td><td><b>E-STOP</b> (always)</td></tr>
-        </table>
-        <div class="sliders">
-          <div class="slider"><label for="hgPan">Pan range</label><div class="track"><input type="range" id="hgPan" min="60" max="240" value="150"></div><output>150</output></div>
-          <div class="slider"><label for="hgZ">Height range</label><div class="track"><input type="range" id="hgZ" min="10" max="60" value="35"></div><output>35</output></div>
-          <div class="slider"><label for="hgR">Reach range</label><div class="track"><input type="range" id="hgR" min="5" max="50" value="25"></div><output>25</output></div>
-        </div>
-        <label class="toggle"><input type="checkbox" id="hgPitchOff"> <span>Lock tool pitch</span></label>
-      </div>
-
-      <div class="sliders" id="baseBox">
+        <dl class="readouts hand-read">
+          <div><dt>tracking</dt><dd id="hrSeen">–</dd></div>
+          <div><dt>base</dt><dd id="hrPan">–</dd></div>
+          <div><dt>reach</dt><dd id="hrR">–</dd></div>
+          <div><dt>height</dt><dd id="hrZ">–</dd></div>
+          <div><dt>pitch</dt><dd id="hrPitch">–</dd></div>
+          <div><dt>roll</dt><dd id="hrRoll">–</dd></div>
+          <div><dt>grip</dt><dd id="hrGrip">–</dd></div>
+        </dl>
+        <div class="sliders compact" id="baseBox">
           <div class="slider"><label for="planePan">Base direction</label><div class="track"><input type="range" id="planePan" min="-75" max="75" step="1" value="0"></div><output>0°</output></div>
+        </div>
+        <details class="more">
+          <summary>How to move &amp; tuning</summary>
+          <div id="joyHelp">
+            <table class="keys">
+              <tr><td>hand left / right</td><td>gripper near the base (15 cm) / far out (33 cm)</td></tr>
+              <tr><td>hand down / up</td><td>gripper at the table / 15 cm up</td></tr>
+              <tr><td>fist / open hand</td><td>gripper closes / opens</td></tr>
+              <tr><td>hand leaves the picture</td><td>robot holds still</td></tr>
+            </table>
+            <p class="hint">Sit facing the laptop, hand 40–60 cm from the camera, palm toward it. Keep your hand inside the box on the video.</p>
+          </div>
+          <div id="sideHelp" hidden>
+            <table class="keys">
+              <tr><td>upper arm forward / down</td><td>robot shoulder leans out / back</td></tr>
+              <tr><td>straighten / bend your elbow</td><td>forearm goes down / up</td></tr>
+              <tr><td>bend your hand down / up</td><td>gripper points down / up</td></tr>
+              <tr><td>fist / open hand</td><td>gripper closes / opens</td></tr>
+            </table>
+            <p class="hint">Stand sideways to the camera so it sees your arm in profile. Base direction turns the plane the robot works in.</p>
+          </div>
+          <div id="armHelp" hidden>
+            <table class="keys">
+              <tr><td>hand out / close to your body</td><td>gripper reaches out / comes in</td></tr>
+              <tr><td>hand at hip / shoulder</td><td>gripper at the table / 15 cm up</td></tr>
+              <tr><td>hand left / right</td><td>base turns</td></tr>
+              <tr><td>turn your hand</td><td>wrist roll</td></tr>
+            </table>
+            <label class="field">Arm <select id="armSide"><option value="right">right</option><option value="left">left</option></select></label>
+          </div>
+          <div id="handHelp" hidden>
+            <table class="keys">
+              <tr><td>hand left / right · up / down</td><td>base turns · tool up / down</td></tr>
+              <tr><td>toward / away from camera</td><td>tool reaches out / pulls back</td></tr>
+              <tr><td>tilt fingers · rotate hand</td><td>tool pitch · wrist roll</td></tr>
+            </table>
+            <div class="sliders compact">
+              <div class="slider"><label for="hgPan">Pan range</label><div class="track"><input type="range" id="hgPan" min="60" max="240" value="150"></div><output>150</output></div>
+              <div class="slider"><label for="hgZ">Height range</label><div class="track"><input type="range" id="hgZ" min="10" max="60" value="35"></div><output>35</output></div>
+              <div class="slider"><label for="hgR">Reach range</label><div class="track"><input type="range" id="hgR" min="5" max="50" value="25"></div><output>25</output></div>
+            </div>
+            <label class="switch"><input type="checkbox" id="hgPitchOff"><i></i><span>Lock tool pitch</span></label>
+          </div>
+          <div class="sliders compact">
+            <div class="slider"><label for="hgSmooth">Smoothing</label><div class="track"><input type="range" id="hgSmooth" min="0" max="95" value="70"></div><output>70</output></div>
+          </div>
+          <div class="row wrap">
+            <label class="field">Gripper <select id="hgGrip"><option value="fist">fist = close</option><option value="pinch">pinch thumb + index</option></select></label>
+            <label class="switch"><input type="checkbox" id="hgMirror"><i></i><span>Mirror</span></label>
+            <label class="switch"><input type="checkbox" id="hgRollOff"><i></i><span>Lock wrist roll</span></label>
+          </div>
+        </details>
       </div>
 
-      <h3>Tuning</h3>
-      <div class="sliders">
-        <div class="slider"><label for="hgSmooth">Smoothing</label><div class="track"><input type="range" id="hgSmooth" min="0" max="95" value="70"></div><output>70</output></div>
+      <!-- ============================================================== DRAW -->
+      <div class="tabpane" id="tab-draw" hidden>
+        <header class="pane-head"><h2>Draw</h2><p>Pick what to draw, check it in 3D, then the robot draws it on paper.</p></header>
+        <ol class="flow" id="drawFlow">
+          <li data-f="1" class="now"><b>1</b>Choose</li>
+          <li data-f="2"><b>2</b>Check in 3D</li>
+          <li data-f="3"><b>3</b>Draw on paper</li>
+        </ol>
+
+        <div id="drawSetup">
+          <div class="seg full" id="drawSrc">
+            <button data-src="shape" class="on">Shapes</button>
+            <button data-src="sketch">Sketch</button>
+            <button data-src="picture">Picture</button>
+          </div>
+
+          <div class="src" id="src-shape">
+            <div class="shapes" id="shapeGrid">
+              <button class="shape-card" data-s="circle"><span>○</span>Circle</button>
+              <button class="shape-card" data-s="square"><span>□</span>Square</button>
+              <button class="shape-card" data-s="star"><span>☆</span>Star</button>
+              <button class="shape-card" data-s="smiley"><span>☺</span>Smiley</button>
+              <button class="shape-card" data-s="house"><span>⌂</span>House</button>
+              <button class="shape-card" data-s="spiral"><span>@</span>Spiral</button>
+            </div>
+            <div class="sliders compact"><div class="slider"><label for="shapeSize">Size</label><div class="track"><input type="range" id="shapeSize" min="40" max="120" step="10" value="80"></div><output>80 mm</output></div></div>
+          </div>
+
+          <div class="src" id="src-sketch" hidden>
+            <div class="sketchbox"><canvas id="padSketch" width="420" height="300"></canvas></div>
+            <div class="row"><button class="btn" id="sketchUndo">Undo</button><button class="btn" id="sketchClear">Clear</button>
+              <span class="hint">The top of the box is away from the robot.</span></div>
+            <div class="sliders compact"><div class="slider"><label for="sketchSize">Size</label><div class="track"><input type="range" id="sketchSize" min="40" max="160" step="10" value="100"></div><output>100 mm</output></div></div>
+          </div>
+
+          <div class="src pic" id="src-picture" hidden>
+            <label class="drop" id="picDrop">
+              <input type="file" id="picFile" accept="image/*" hidden>
+              <span><b>Drop a picture</b>, paste one (Ctrl/⌘ V) or <u>choose a file</u> · line drawings work best</span>
+            </label>
+            <div class="row wrap pic-opts">
+              <div class="seg small" id="picMode">
+                <button data-m="lines" class="on" title="Line art, sketches, logos, text">Sketch</button>
+                <button data-m="photo" title="Outlines from a photo">Photo</button>
+                <button data-m="shade" title="Sketch + hatching where the picture is dark (takes longer)">Shaded</button>
+              </div>
+              <label class="mini">Detail <input type="range" id="picDetail" min="0" max="1" step="0.05" value="0.5"></label>
+              <label class="switch small" title="As big as the sheet allows while the pen stays upright"><input type="checkbox" id="picFill" checked><i></i><span>Fill sheet</span></label>
+              <label class="mini">Size <input type="range" id="picSize" min="40" max="270" step="10" value="120" disabled> <output id="picSizeOut">auto</output></label>
+            </div>
+            <div class="pic-view" id="picView" hidden>
+              <canvas id="picCanvas" width="600" height="420"></canvas>
+              <div class="pic-stats" id="picStats"></div>
+              <div class="row wrap">
+                <div class="seg small" id="picSpeed"><button data-x="5">5×</button><button data-x="10" class="on">10×</button><button data-x="30">30×</button></div>
+                <label class="switch small"><input type="checkbox" id="picShowImg" checked><i></i><span>show picture</span></label>
+              </div>
+              <p class="hint" id="picNote"></p>
+            </div>
+          </div>
+
+          <p class="hint draw-note" id="drawNote"></p>
+          <div class="draw-go">
+            <button class="btn" id="picSim"><svg class="ic"><use href="#i-play"/></svg>Check in 3D</button>
+            <button class="btn primary big" id="picDraw"><svg class="ic"><use href="#i-draw"/></svg>Draw it on paper</button>
+          </div>
+          <details class="more">
+            <summary>Paper and pen setup</summary>
+            <p class="hint">Tape an A4 sheet sideways in front of the robot, near edge about 17 cm from the base. Use a felt-tip
+              pen wrapped with tape where the gripper holds it (about 12 mm thick). <b>Draw it on paper</b> starts the drawing
+              program: it opens the gripper for the pen, then you place the pen on the paper by hand (or press Auto), and
+              your drawing starts by itself.</p>
+          </details>
+        </div>
+
+        <div id="drawWizard" hidden>
+          <ol class="stepper" id="drawStepper"></ol>
+          <div class="wizcard" id="drawCard"></div>
+        </div>
+        <details class="more drawlog"><summary>What the drawing program says</summary><div class="session"></div></details>
       </div>
-      <div class="row wrap">
-        <label class="toggle">Gripper
-          <select id="hgGrip" class="btn"><option value="fist">fist = close</option><option value="pinch">pinch thumb + index</option></select></label>
-        <label class="toggle"><input type="checkbox" id="hgMirror"> <span>I face the robot (mirror left/right)</span></label>
-        <label class="toggle"><input type="checkbox" id="hgRollOff"> <span>Lock wrist roll</span></label>
+
+      <!-- ============================================================== MOTIONS -->
+      <div class="tabpane" id="tab-motions" hidden>
+        <header class="pane-head"><h2>Motions</h2><p>Ready-made moves. Any other control interrupts them.</p></header>
+        <div class="motion-grid" id="motionButtons"></div>
+        <div class="row between">
+          <div class="seg small" id="motionSpeedSeg"><button data-v="0.5">Slow ×0.5</button><button data-v="1" class="on">Normal</button><button data-v="1.5">Fast ×1.5</button></div>
+          <select id="motionSpeed" hidden><option value="0.5">0.5</option><option value="1" selected>1</option><option value="1.5">1.5</option></select>
+          <button class="btn warn" id="motionStop"><svg class="ic"><use href="#i-stop"/></svg>Stop</button>
+        </div>
+        <div class="progress-card" id="playCard"><div class="bar"><i id="playBar"></i></div><p id="playState" class="hint">Nothing playing.</p></div>
       </div>
-      <p class="muted">Start on <b>Slow</b>. The tracking models load from the internet the first time (jsdelivr / Google).
-        Limits, E-STOP, the table guard and the gripper stall guard always apply.</p>
+
+      <!-- ============================================================== RECORD -->
+      <div class="tabpane" id="tab-record" hidden>
+        <header class="pane-head"><h2>Record &amp; replay</h2><p>Teach a movement, then play it back.</p></header>
+        <div class="rec-card">
+          <button class="rec-btn" id="recBtn">● Record</button>
+          <div class="rec-side">
+            <input id="recName" class="input" placeholder="Name, e.g. pick-left" maxlength="40">
+            <label class="switch"><input type="checkbox" id="recByHand" checked><i></i><span>Record by hand <small>(motors go limp: hold the arm)</small></span></label>
+            <div id="recState" class="rec-state">Ready to record.</div>
+          </div>
+        </div>
+        <div class="row between">
+          <h3>Recordings</h3>
+          <div class="seg small" id="recSpeedSeg"><button data-v="0.5">×0.5</button><button data-v="1" class="on">×1</button><button data-v="1.5">×1.5</button><button data-v="2">×2</button></div>
+          <select id="recSpeed" hidden><option value="0.5">0.5</option><option value="1" selected>1</option><option value="1.5">1.5</option><option value="2">2</option></select>
+        </div>
+        <div class="list" id="recList"></div>
+      </div>
+
+      <!-- ============================================================== TASKS -->
+      <div class="tabpane" id="tab-tasks" hidden>
+        <header class="pane-head"><h2>Vision tasks</h2><p>The overhead camera finds objects, the arm picks them. Needs a table calibration.</p></header>
+        <div class="task-grid">
+          <button class="task-card task-start" data-task="pick-place" data-trials="1"><b>Pick &amp; place</b><span>Move the cube to a spot</span></button>
+          <button class="task-card task-start" data-task="basket" data-trials="1"><b>Cube → basket</b><span>Drop the cube in the basket</span></button>
+          <button class="task-card task-start" data-task="multi"><b>Clear the table</b><span>Every object, one by one</span></button>
+          <button class="task-card task-start" data-task="stack"><b>Stack</b><span>One block on another</span></button>
+          <button class="task-card task-start" data-task="stack" data-hover="1"><b>Stack (check)</b><span>Hovers first, nothing drops</span></button>
+          <button class="task-card task-start" data-task="demo"><b>Practice</b><span>Runs everything, nothing moves</span></button>
+          <button class="task-card task-start" data-task="report"><b>Report</b><span>Scores of the last trials</span></button>
+          <label class="task-card field-card">Trials <input id="taskTrials" class="input" type="number" min="1" max="20" value="3"></label>
+        </div>
+        <div class="session"></div>
+      </div>
+
+      <!-- ============================================================== CALIBRATE -->
+      <div class="tabpane" id="tab-calibrate" hidden>
+        <header class="pane-head"><h2>Calibrate</h2><p>Each procedure tells you what to do, one step at a time.</p></header>
+        <div class="cal-list">
+          <div class="cal"><div><b>Robot quirks</b><span>Once per robot: wrist range, gripper, camera delay. Moves the arm: clear the table.</span></div><button class="btn task-start" data-task="measure">Measure</button></div>
+          <div class="cal"><div><b>Table (camera → robot)</b><span>After the overhead camera moved. About 12 min, you place the cube once.</span></div><button class="btn task-start" data-task="calibrate-table">Start</button></div>
+          <div class="cal"><div><b>Camera lens</b><span>Optional: hold a printed 9×6 checkerboard in view.</span></div><button class="btn task-start" data-task="calibrate-camera">Start</button></div>
+          <div class="cal"><div><b>Object colour</b><span>A new object or different lighting.</span></div>
+            <div class="row"><select id="hsvColor"><option>orange</option><option>yellow</option><option>red</option><option>green</option><option>blue</option></select><button class="btn task-start" data-task="calibrate-hsv">Start</button></div></div>
+        </div>
+        <p class="hint">Motor calibration (the joints' zero points) is done once in a terminal: see CALIBRATE_AND_START.md.</p>
+        <div class="session"></div>
+      </div>
+
+      <!-- ============================================================== AI -->
+      <div class="tabpane" id="tab-ai" hidden>
+        <header class="pane-head"><h2>Talk to the robot</h2><p>Say what to do. Claude plans it with the dashboard's own safe moves.</p></header>
+        <div id="aiProblem" class="ai-state" hidden></div>
+        <div id="aiLog" class="ailog"></div>
+        <div class="row wrap" id="aiExamples">
+          <button class="chip ai-ex">Wave hello</button>
+          <button class="chip ai-ex">Go to the ready pose and open the gripper</button>
+          <button class="chip ai-ex">Do a little dance, then take a bow</button>
+          <button class="chip ai-ex">Where is the gripper now?</button>
+        </div>
+        <div class="ai-input">
+          <input id="aiText" class="input" maxlength="1000" placeholder="e.g. wave hello, then pick up the cube 25 cm in front">
+          <button class="btn primary" id="aiSend">Send</button>
+          <button class="btn warn" id="aiStop">Stop</button>
+          <button class="btn ghost" id="aiReset" title="forget the conversation">New</button>
+        </div>
+        <p class="hint">Limits, the table floor, the gripper guard and E-STOP still apply. It can't see: say where things are (distance from the base, left or right).</p>
+      </div>
+
+      <!-- ============================================================== STATUS -->
+      <div class="tabpane" id="tab-status" hidden>
+        <header class="pane-head"><h2>Status</h2><p>Every motor, live. The same readings are on the 3D model (Status button).</p></header>
+        <table class="motors">
+          <thead><tr><th>#</th><th>joint</th><th>pos</th><th>goal</th><th>°C</th><th>V</th><th>load</th><th>torque</th><th>faults</th></tr></thead>
+          <tbody id="motorRows"></tbody>
+        </table>
+        <p class="hint" id="motorNote"></p>
+        <div class="sect two">
+          <div><h3>This computer</h3><dl id="sysInfo" class="kv"></dl></div>
+          <div><h3>Doctor <small>health check (arm disconnected)</small></h3>
+            <button class="btn" id="btnDoctor">Run doctor</button>
+            <pre id="doctorOut" class="console" hidden></pre></div>
+        </div>
+      </div>
     </div>
   </section>
 </main>
@@ -428,6 +455,7 @@
 <div id="toast" class="toast" hidden></div>
 <script src="twin.js"></script>
 <script src="app.js"></script>
+<script src="ui.js"></script>
 <script src="tasks.js"></script>
 <script src="studio.js"></script>
 <script type="module" src="hand.js"></script>
