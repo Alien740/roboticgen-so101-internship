@@ -403,3 +403,19 @@ def test_play_switches_torque_back_on(ctl):
     ctl.set_torque(False); wait(lambda: not ctl.torque)
     app.command("motion", {"name": "yes", "speed": 2.0})
     assert ctl.torque and (ctl.traj is not None or ctl.playback is not None)
+
+
+def test_picture_to_strokes_to_dry_run():
+    import base64
+    import cv2
+    import numpy as np
+    from so101_dashboard import drawing
+    img = np.full((200, 300), 250, np.uint8)
+    cv2.rectangle(img, (60, 50), (240, 150), 20, 5)
+    png = base64.b64encode(cv2.imencode(".png", img)[1].tobytes()).decode()
+    v = drawing.vectorize({"image": "data:image/png;base64," + png, "mode": "lines", "size_mm": 60})
+    assert 1 <= v["stats"]["strokes"] <= 2 and len(v["uv"]) == len(v["strokes"])
+    plan = drawing.plan(P.load().name, {"strokes": v["uv"], "size_mm": 60})
+    assert plan["ok"], plan["error"]
+    assert plan["keys"] and "gripper_frame_link" in plan["keys"][0]["f"] and len(plan["keys"][0]["f"]["gripper_frame_link"]) == 16
+    assert any(t[1] for t in plan["tips"])                                      # some pen-down points

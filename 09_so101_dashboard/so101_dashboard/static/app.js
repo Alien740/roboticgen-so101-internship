@@ -143,7 +143,7 @@ function render() {
     $("#toolPitch").textContent = `${fmt(S.tool.pitch_deg, 0)}°`;
   } else { $("#toolXyz").textContent = $("#toolPitch").textContent = "–"; }
   $("#rate").textContent = connected ? `${fmt(S.rate_hz, 0)} Hz` : "–";
-  if (twin && S.frames) { twin.setFrames(S.frames); $("#twinMsg").textContent = ""; }
+  if (twin && S.frames && !window.SIM_LOCK) { twin.setFrames(S.frames); $("#twinMsg").textContent = ""; }
 
   $("#warnings").innerHTML = S.warnings.slice().reverse().map(w =>
     `<li><time>${new Date(w.t * 1000).toLocaleTimeString()}</time>${escapeHtml(w.msg)}</li>`).join("");

@@ -10,6 +10,7 @@ prompt and the answers, and keeps the dashboard off the serial port while they r
 """
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import threading
@@ -40,14 +41,24 @@ class TaskRunner:
         self.error = ""
         self._lock = threading.Lock()
         ctl.busy = lambda: "a framework task (draw / task / calibration) is using the arm" if self.running() else None
+        ctl.task_pose = self.live_pose
 
     # ------------------------------------------------------------------ state
     def running(self):
         st = agent._state(self.prof)
         return self.handing_over is not None or st["state"] in ("waiting", "running")
 
+    def live_pose(self):
+        """Joint angles the running task last commanded (the framework publishes them), or None."""
+        f = self.prof.run_dir / "live_pose.json"
+        try:
+            d = json.loads(f.read_text())
+        except (OSError, ValueError):
+            return None
+        return d["angles"] if time.time() - d["t"] < 3.0 and self.running() else None
+
     def state(self):
-        st = agent._state(self.prof, n_events=12)
+        st = agent._state(self.prof, n_events=40)
         out = []
         f = self.prof.run_dir / "agent.out"
         if st["state"] != "not_started" and f.exists():

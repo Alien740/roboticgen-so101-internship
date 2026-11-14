@@ -208,3 +208,37 @@ button.btn:disabled { opacity: .45; cursor: not-allowed; }
 .sketchbox canvas { width: 300px; max-width: 100%; aspect-ratio: 1; border-radius: 8px; touch-action: none; cursor: crosshair; display: block; }
 
 .btn.armed { background: var(--yellow); border-color: var(--yellow); color: #1F2022; font-weight: 700; }
+
+/* ---- cameras, picture drawing, 3D dry run, show mode ---- */
+.btn.small { padding: 4px 10px; font-size: 12px; }
+.small { font-size: 12px; }
+.cams-head { display: flex; align-items: baseline; gap: 10px; margin: 14px 0 8px; flex-wrap: wrap; }
+.cams { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+@media (max-width: 560px) { .cams { grid-template-columns: 1fr; } }
+.cam { margin: 0; position: relative; border-radius: 8px; overflow: hidden; background: #000; aspect-ratio: 16 / 9; }
+.cam video { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cam figcaption { position: absolute; left: 6px; right: 6px; bottom: 6px; display: flex; gap: 6px; opacity: .85; }
+.cam figcaption select { flex: 1; min-width: 0; }
+.cam:not(.live)::before { content: "camera off"; position: absolute; inset: 0; display: grid; place-items: center; color: #888; font-size: 13px; }
+.cam.live figcaption { opacity: 0; transition: opacity .2s; }
+.cam.live:hover figcaption { opacity: .9; }
+.sim-hud { position: absolute; right: 10px; top: 8px; font: 600 12px/1.4 ui-monospace, Consolas, monospace;
+  background: color-mix(in srgb, var(--navy) 85%, transparent); color: #fff; padding: 5px 10px; border-radius: 6px; }
+.sim-hud .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--yellow); margin-right: 6px; animation: blink 1s infinite; }
+.sim-hud.real .dot { background: var(--bad); }
+@keyframes blink { 50% { opacity: .25; } }
+.card-in { border: 1px solid var(--line); border-radius: 10px; padding: 12px; margin: 14px 0; }
+.card-in h4 { margin: 0 0 8px; }
+.drop { display: block; border: 2px dashed var(--line); border-radius: 10px; padding: 16px; text-align: center; cursor: pointer; color: var(--muted); }
+.drop:hover, .drop.over { border-color: var(--accent); color: var(--ink); }
+.pic-opts { margin: 10px 0; align-items: center; gap: 12px; }
+.mini { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--muted); }
+.mini input[type=range] { width: 110px; accent-color: var(--accent); }
+#picCanvas { width: 100%; height: auto; background: #fff; border: 1px solid var(--line); border-radius: 8px; display: block; }
+.pic-stats { font: 12px/1.6 ui-monospace, Consolas, monospace; color: var(--muted); margin: 6px 0; }
+.pic-stats b { color: var(--ink); }
+.pic-view .row { gap: 8px; align-items: center; }
+body.show .layout { grid-template-columns: minmax(0, 1.7fr) minmax(340px, 1fr); }
+body.show #twin { height: min(56vh, 620px); }
+body.show .cam { aspect-ratio: 4 / 3; }
+body.show #btnShow { background: var(--yellow); border-color: var(--yellow); color: var(--navy); }

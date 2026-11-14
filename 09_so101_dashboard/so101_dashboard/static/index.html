@@ -36,6 +36,7 @@
   <section class="twin card">
     <div class="twin-head">
       <h2>3D twin</h2>
+      <button id="btnShow" class="btn small" title="Bigger twin and cameras, for showing the robot to people">🎬 Show mode</button>
       <div class="seg small" id="views">
         <button data-view="iso" class="on">3D</button>
         <button data-view="front">Front</button>
@@ -51,8 +52,26 @@
         <div><span class="k">loop</span> <span id="rate">–</span></div>
       </div>
       <div id="twinMsg" class="twin-msg">Loading 3D model…</div>
+      <div id="simHud" class="sim-hud" hidden></div>
     </div>
     <ul id="warnings" class="warnings"></ul>
+
+    <div class="cams-head">
+      <h2>Cameras</h2>
+      <span class="muted small">live, in this browser – e.g. the overhead webcam and the laptop camera at the side</span>
+    </div>
+    <div class="cams">
+      <figure class="cam" data-cam="0">
+        <video playsinline muted></video>
+        <figcaption><select class="btn small cam-dev"><option value="">camera…</option></select>
+          <button class="btn small cam-go">Start</button></figcaption>
+      </figure>
+      <figure class="cam" data-cam="1">
+        <video playsinline muted></video>
+        <figcaption><select class="btn small cam-dev"><option value="">camera…</option></select>
+          <button class="btn small cam-go">Start</button></figcaption>
+      </figure>
+    </div>
   </section>
 
   <section class="side card">
@@ -153,6 +172,34 @@
       <div id="drawWizard" hidden>
         <ol class="stepper" id="drawStepper"></ol>
         <div class="wizcard" id="drawCard"></div>
+      </div>
+
+      <div class="pic card-in" id="picPanel">
+        <h4>Draw a picture <small class="muted">upload → see the lines → watch the 3D dry run → draw it</small></h4>
+        <label class="drop" id="picDrop">
+          <input type="file" id="picFile" accept="image/*" hidden>
+          <span>Drop a picture here, paste one (⌘V), or <u>choose a file</u>. Line drawings and simple sketches work best.</span>
+        </label>
+        <div class="row wrap pic-opts">
+          <div class="seg small" id="picMode">
+            <button data-m="lines" class="on" title="Line art, sketches, logos, text">Sketch</button>
+            <button data-m="photo" title="Outlines from a photo">Photo</button>
+            <button data-m="shade" title="Sketch + hatching where the picture is dark (takes longer)">Shaded</button>
+          </div>
+          <label class="mini">Detail <input type="range" id="picDetail" min="0" max="1" step="0.05" value="0.5"></label>
+          <label class="mini">Size <input type="range" id="picSize" min="40" max="120" step="10" value="100"> <output id="picSizeOut">100 mm</output></label>
+        </div>
+        <div class="pic-view" id="picView" hidden>
+          <canvas id="picCanvas" width="600" height="420"></canvas>
+          <div class="pic-stats" id="picStats"></div>
+          <div class="row wrap">
+            <button class="btn" id="picSim">▶ Simulate in 3D</button>
+            <div class="seg small" id="picSpeed"><button data-x="5">5×</button><button data-x="10" class="on">10×</button><button data-x="30">30×</button></div>
+            <button class="btn primary" id="picDraw">✎ Draw it on paper</button>
+            <label class="toggle small"><input type="checkbox" id="picShowImg" checked> <span>show picture</span></label>
+          </div>
+          <p class="muted small" id="picNote"></p>
+        </div>
       </div>
 
       <details class="drawlog"><summary>Details (what the drawing program says)</summary><div class="session"></div></details>
@@ -381,6 +428,7 @@
 <script src="twin.js"></script>
 <script src="app.js"></script>
 <script src="tasks.js"></script>
+<script src="studio.js"></script>
 <script type="module" src="hand.js"></script>
 </body>
 </html>

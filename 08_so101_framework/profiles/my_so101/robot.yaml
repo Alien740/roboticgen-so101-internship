@@ -90,9 +90,12 @@ drawing:
   band_y: [-0.06, 0.06]
   max_size_mm: 120              # hand-placed pen at the A4 sheet reaches a ~210 mm square (pen lean <16 deg); was 60
   press: 0.0015                # m past the touched height (2.5 mm pushed a weakly gripped pen sideways)
-  speed: 0.012                 # m/s
+  speed: 0.010                 # m/s (12 rounded corners off with a loosely held pen)
   rate_hz: 30                  # command rate (2 mm waypoints held 0.17 s each caused "shivering")
-  lift: 0.015
+  lift: 0.025                  # pen-up height between strokes (15 mm let a sliding pen touch)
+  travel_speed: 0.03           # m/s, pen-up moves (straight lines, pen vertical)
+  hop: 0.006                   # pen-up height when the next stroke starts within hop_within
+  hop_within: 0.015
   pen_torque: 650
   load_xy: [0.20, 0.0]
   load_z: 0.12

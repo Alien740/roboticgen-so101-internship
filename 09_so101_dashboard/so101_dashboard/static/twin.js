@@ -66,6 +66,7 @@ const Twin = (() => {
 
     const parts = [];          // {link, vao, count, color}
     const lines = [];          // {vao, count, color}
+    const overlays = {};       // name -> {vao, count, color}: planned drawing, ink so far (setOverlay)
     let frames = null, dirty = true;
     const cam = { yaw: VIEWS.iso[0], pitch: VIEWS.iso[1], dist: VIEWS.iso[2], at: [0.12, 0, 0.17] };
     const dark = matchMedia("(prefers-color-scheme: dark)").matches;
@@ -129,6 +130,14 @@ const Twin = (() => {
     }
 
     function setFrames(f) { frames = f; dirty = true; }
+    // pts: flat [x,y,z, x,y,z, ...] in pairs (gl.LINES), base frame metres; empty/null removes it
+    function setOverlay(name, pts, color) {
+      const old = overlays[name];
+      if (old) gl.deleteVertexArray(old.vao);
+      delete overlays[name];
+      if (pts && pts.length >= 6) overlays[name] = { vao: vao(new Float32Array(pts)), count: pts.length / 3, color };
+      dirty = true;
+    }
     function setView(name) { const v = VIEWS[name]; if (v) { [cam.yaw, cam.pitch, cam.dist] = v; dirty = true; } }
 
     function draw() {
@@ -154,6 +163,7 @@ const Twin = (() => {
       gl.uniform1f(u.lit, 0);
       gl.uniformMatrix4fv(u.model, false, M.I);
       for (const l of lines) { gl.uniform3fv(u.color, l.color); gl.bindVertexArray(l.vao); gl.drawArrays(gl.LINES, 0, l.count); }
+      for (const l of Object.values(overlays)) { gl.uniform3fv(u.color, l.color); gl.bindVertexArray(l.vao); gl.drawArrays(gl.LINES, 0, l.count); }
 
       if (frames) {
         gl.uniform1f(u.lit, 1);
@@ -184,7 +194,14 @@ const Twin = (() => {
     }, { passive: false });
 
     (function loop() { draw(); requestAnimationFrame(loop); })();
-    return { load, setFrames, setView };
+    // look at a point (e.g. the drawing) from closer; focus(null) goes back to the default target
+    const HOME_AT = cam.at.slice(), HOME_DIST = cam.dist;
+    function focus(at, dist) {
+      cam.at = at ? at.slice() : HOME_AT.slice();
+      cam.dist = dist || (at ? cam.dist : HOME_DIST);
+      dirty = true;
+    }
+    return { load, setFrames, setView, setOverlay, focus };
   }
 
   return { create };

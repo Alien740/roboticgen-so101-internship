@@ -42,7 +42,7 @@ class Session:
         self._emit(msg)
 
     def event(self, type_: str, **data):
-        self._emit("@@EVENT " + json.dumps({"type": type_, **data}, default=str))
+        self._emit("@@EVENT " + json.dumps({"type": type_, "t": round(time.time(), 3), **data}, default=str))
 
     # ---------------------------------------------------------------- input
     def ask(self, prompt: str, options: list[str] | None = None) -> str:

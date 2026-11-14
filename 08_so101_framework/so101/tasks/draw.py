@@ -34,6 +34,7 @@ import time
 import numpy as np
 
 from .. import kinematics as K
+from . import pathtools as P
 
 DOWN = np.array((0.0, 0.0, -1.0))
 PEN_NOMINAL = 0.03     # m; hand placement: pen length past the tool point (any value works with a vertical pen)
@@ -94,6 +95,95 @@ def fit_plane(samples):
 
 def plane_z(coef, xy):
     return coef[0] * xy[0] + coef[1] * xy[1] + coef[2]
+
+
+# ------------------------------------------------------------------ dry run (no arm)
+def pen_setup(prof):
+    """Pen direction, drawing spot, paper height, pen length and the arm pose from the last hand
+    placement (measured.yaml), else the profile defaults."""
+    m = prof.get("measured", {}).get("pen") or {}
+    pen_dir = np.array(m.get("pen_dir_tool") or prof["wrist"]["pen_dir_tool"], float)
+    return {"pen_dir": pen_dir / np.linalg.norm(pen_dir),
+            "center": np.array(m.get("center") or prof["drawing"]["center"], float),
+            "paper_z": float(m.get("paper_z", 0.0)), "length": float(m.get("length", PEN_NOMINAL)),
+            "angles": m.get("angles"), "placed": "center" in m}
+
+
+def travel_heights(strokes, d):
+    """Pen-up height after each stroke (metres, base frame): a short hop when the next stroke starts
+    close by (hatching, letters), the full lift for long moves."""
+    hop, near = d.get("hop", 0.006), d.get("hop_within", 0.015)
+    return [hop if k + 1 < len(strokes) and math.dist(st[-1], strokes[k + 1][0]) <= near else d["lift"]
+            for k, st in enumerate(strokes)]
+
+
+def _search_pose(xyz, pen_dir, length):
+    """Coarse grid of seeds -> the most vertical pen pose that reaches xyz (a hand placement may use a
+    wrist roll outside the profile's range, so this one has no roll limit)."""
+    import itertools
+    pan = math.degrees(math.atan2(xyz[1], xyz[0]))
+    best = None
+    for r, l, e, w in itertools.product((90, 0, -90, 45, -45), (0, -20, 20, -40), (50, 80, 20, -20), (-30, 0, 40, 80)):
+        for p in (pan, -pan):
+            A, err, vert = K.pen_ik_local(xyz, {"shoulder_pan": p, "shoulder_lift": l, "elbow_flex": e,
+                                                "wrist_flex": w, "wrist_roll": r}, pen_dir, length=length)
+            if err < 0.002 and vert > 0.96 and (best is None or vert > best[1]):
+                best = (A, vert)
+                if vert > 0.995:
+                    return A
+    if best is None:
+        raise RuntimeError(f"pen cannot point straight down at {np.round(xyz, 3)}")
+    return best[0]
+
+
+def simulate(prof, strokes_mm, step_mm=4.0):
+    """Plan a drawing without the arm, the way Drawer.draw_strokes moves: straight pen-up travel,
+    straight down, the stroke, straight up. Returns {"frames": [(t_s, angles, pen_down, tip_xyz)],
+    "ok": bool, "error": str, "stroke_of_frame": [...]} - planning stops at the first stroke that
+    can't be reached, as the real run would (before that stroke's pen goes down). The real run
+    plans every 0.2 mm; a few mm is enough to show the motion and check the reach."""
+    d, ps = prof["drawing"], pen_setup(prof)
+    pen_dir, L, z0 = ps["pen_dir"], ps["length"], ps["paper_z"]
+    strokes = to_base(strokes_mm, ps["center"])
+    ups = travel_heights(strokes, d)
+    step = step_mm / 1000
+    A = {k: float(v) for k, v in (ps["angles"] or prof["poses"]["home"]).items() if k in K.J5}
+    lo, hi = prof["wrist"]["roll_min_ok"], prof["wrist"]["roll_max_ok"]
+    if ps["angles"]:
+        lo, hi = min(lo, A["wrist_roll"] - 10), max(hi, A["wrist_roll"] + 10)
+    frames, idx, t = [], [], 0.0
+    speed, travel = d["speed"], d.get("travel_speed", 0.03)
+
+    def tip(a):
+        return K.pen_tip(K.fk(a), pen_dir, L)
+
+    def run(pts, v, down, k):
+        nonlocal A, t
+        traj = K.pen_path(A, pts, pen_dir, length=L, max_jump=35.0)     # coarse steps: a wrist flip is still caught
+        for i, (a, p) in enumerate(zip(traj, pts)):
+            t += (np.linalg.norm(np.subtract(p, pts[i - 1])) / v) if i else 0.0
+            frames.append((t, a, down, [float(x) for x in p])); idx.append(k)
+        A = traj[-1]
+
+    try:
+        x, y = strokes[0][0]
+        try:
+            A = K.pen_ik((x, y, z0 + d["lift"]), A, pen_dir, roll_limits=(lo, hi), length=L)
+        except RuntimeError:
+            A = _search_pose((x, y, z0 + d["lift"]), pen_dir, L)    # no saved hand placement: any vertical pose
+        frames.append((0.0, A, False, [float(v) for v in tip(A)])); idx.append(0)
+        for k, st in enumerate(strokes):
+            pts = [np.array((p[0], p[1], z0 - d["press"])) for p in K.dense(st, step=step)]
+            up = ups[k - 1] if k else d["lift"]
+            above = np.array((*st[0], z0 + up))
+            run(K.dense([tip(A), above], step=step * 2), travel, False, k)
+            run(K.dense([above, pts[0]], step=0.01), 0.008, False, k)
+            run(pts, speed, True, k)
+            run(K.dense([pts[-1], np.array((*st[-1], z0 + ups[k]))], step=0.01), 0.015, False, k)
+        return {"frames": frames, "stroke_of_frame": idx, "ok": True, "error": ""}
+    except RuntimeError as e:
+        return {"frames": frames, "stroke_of_frame": idx, "ok": False,
+                "error": f"stroke {idx[-1] + 1 if idx else 1}: {e}"}
 
 
 # ------------------------------------------------------------------ session
@@ -274,7 +364,10 @@ class Drawer:
         paper_z = tool_z - PEN_NOMINAL                            # tip height at the placed point
         self.pen_dir, self.center, self.length = pen_dir, center, PEN_NOMINAL
         self.samples, self.coef = [(float(center[0]), float(center[1]), paper_z)], [0.0, 0.0, paper_z]
-        self.prof.save_measured("pen", {"pen_dir_tool": [round(float(v), 3) for v in self.pen_dir]})
+        self.prof.save_measured("pen", {"pen_dir_tool": [round(float(v), 3) for v in self.pen_dir],
+                                        "center": [round(float(v), 4) for v in center],
+                                        "paper_z": round(paper_z, 4), "length": PEN_NOMINAL,
+                                        "angles": {k: round(float(v), 1) for k, v in a.items()}})
         self.sess.event("hand_placed", center_mm=[round(v * 1000) for v in center], tool_z_mm=round(tool_z * 1000, 1))
         roll = a["wrist_roll"]                                    # allow the roll the person chose
         self.roll_lim = (min(self.roll_lim[0], roll - 10), max(self.roll_lim[1], roll + 10))
@@ -291,14 +384,17 @@ class Drawer:
             raise FileNotFoundError(f"no drawing '{fname}' in {f.parent}")
         d = json.loads(f.read_text())
         size_mm = min(float(d.get("size_mm", size_mm)), self.d["max_size_mm"])
-        self.draw_strokes(fit_strokes(d["strokes"], size_mm), fname)
+        strokes = [P.simplify(st, 0.15) for st in fit_strokes(d["strokes"], size_mm)]   # 0.15 mm: removes jitter only
+        self.draw_strokes(strokes, fname)
 
     def draw_strokes(self, strokes_mm, name):
         strokes = to_base(strokes_mm, self.center)
         pts_mm = [p for st in strokes_mm for p in st]
         size_mm = max(max(p[0] for p in pts_mm) - min(p[0] for p in pts_mm), max(p[1] for p in pts_mm) - min(p[1] for p in pts_mm))
-        self.sess.event("drawing", shape=name, size_mm=round(size_mm), press_mm=self.press * 1000, speed_mm_s=self.speed * 1000)
+        self.sess.event("drawing", shape=name, size_mm=round(size_mm), strokes=len(strokes),
+                        press_mm=self.press * 1000, speed_mm_s=self.speed * 1000)
         self.arm.set_grip_torque(self.d["pen_torque"])
+        ups = travel_heights(strokes, self.d)
         t0, total = time.time(), 0.0
         try:
             for k, st in enumerate(strokes):
@@ -307,10 +403,15 @@ class Drawer:
                 self.sess.say(f"planning stroke {k + 1}/{len(strokes)} ({len(pts)} points)...")
                 A0 = self.solve(path[0], tip=True)                      # plan BEFORE the pen goes down
                 traj = K.pen_path(A0, path, self.pen_dir, length=self.length)
-                self.goto((*pts[0], plane_z(self.coef, pts[0]) + self.d["lift"]), duration=1.2, tip=True)
-                self.line(path[0], speed=0.01, tip=True)
+                self.sess.event("stroke_start", index=k + 1, of=len(strokes))
+                # travel: straight lines with the pen vertical - across at lift height, then down.
+                # (A joint-space move between two lifted poses swings in an arc and can dip the tip
+                # onto the paper on the way: that drew streaks between strokes.)
+                up = ups[k - 1] if k else self.d["lift"]
+                self.line((*pts[0], plane_z(self.coef, pts[0]) + up), speed=self.d.get("travel_speed", 0.03), tip=True)
+                self.line(path[0], speed=0.008, tip=True)
                 self.arm.stream(traj, self.d["rate_hz"], check=self.sess.check_stop)
-                self.line((*pts[-1], plane_z(self.coef, pts[-1]) + self.d["lift"]), speed=0.02, tip=True)
+                self.line((*pts[-1], plane_z(self.coef, pts[-1]) + ups[k]), speed=0.015, tip=True)   # straight up
                 total += sum(np.linalg.norm(np.subtract(pts[i + 1], pts[i])) for i in range(len(pts) - 1))
                 self.sess.event("stroke_done", index=k + 1, of=len(strokes))
         finally:

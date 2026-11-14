@@ -150,6 +150,7 @@ class Controller:
 
     # ================================================================ commands (any thread)
     busy = staticmethod(lambda: None)        # set by the server: why the arm can't be connected now
+    task_pose = None                          # set by the server: angles a running framework task commands
 
     def connect(self, kind):
         if kind not in ("sim", "real"):
@@ -413,6 +414,9 @@ class Controller:
                     "progress": round(min(1.0, (time.monotonic() - self.traj["t0"]) / self.traj["dur"]), 2)},
             }
             measured = dict(self.measured)
+        if not measured and self.backend is None and self.task_pose:
+            measured = self.task_pose() or {}                 # a framework task owns the arm: show its pose
+            s["task_pose"] = bool(measured)
         if measured:
             T = K.fk(measured)
             s["tool"] = {"xyz_mm": [round(v * 1000, 1) for v in T[:3, 3]], "pitch_deg": round(K.pitch_deg(T), 1)}
