@@ -108,6 +108,39 @@ def test_hand_input_refused_during_estop(ctl):
         ctl.hand_input(pan=0, r=0.2, z=0.1, pitch=-40)
 
 
+def test_motion_ramps_up_and_down_smoothly():
+    c = Controller(P.load("my_so101"))                      # step the loop's maths directly, 50 Hz
+    c.goal = dict(WORK); c.target = dict(WORK, shoulder_pan=30.0)
+    dt, pos = 0.02, []
+    for _ in range(150):
+        c._rate_limit(dt); pos.append(c.goal["shoulder_pan"])
+    v = np.diff([0.0] + pos) / dt
+    acc = 35.0 * 4.0                                        # normal speed x ACCEL_PER_RATE
+    assert v[0] <= acc * dt + 1e-6                          # starts gently (the old loop jumped to 35)
+    assert np.abs(np.diff(v)).max() <= acc * dt * 1.25      # never a velocity step (old loop: 35)
+    assert v.max() <= 35.0 + 1e-6 and abs(pos[-1] - 30.0) < 1e-6 and abs(v[-1]) < 1e-6
+
+
+def test_lost_position_reads_do_not_raise(ctl):
+    real, misses = ctl.backend.read, iter(range(3))
+
+    def flaky():
+        if next(misses, None) is not None:
+            raise ConnectionError("There is no status packet!")
+        return real()
+    ctl.backend.read = flaky
+    time.sleep(0.3)
+    s = ctl.snapshot()
+    assert s["state"] == "ready" and s["error"] == ""
+
+
+def test_repeated_warnings_collapse():
+    c = Controller(P.load("my_so101"))
+    for _ in range(3):
+        c.warn("no status packet")
+    assert [w["msg"] for w in c.warnings] == ["no status packet (x3)"]
+
+
 def test_estop_freezes_and_latches(ctl):
     ctl.set_joints({"shoulder_pan": 60})
     time.sleep(0.3)

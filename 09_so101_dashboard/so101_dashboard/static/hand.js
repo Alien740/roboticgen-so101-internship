@@ -73,15 +73,33 @@ function features(lm, world) {
   const flex = deg(Math.atan2(-v[2], -v[1]));                  // 0 = fingers up, + = tilted toward camera
   const roll = deg(Math.atan2(p17[1] - i5[1], p17[0] - i5[0]));
   const d3 = (a, b) => Math.hypot(W(a).x - W(b).x, W(a).y - W(b).y, W(a).z - W(b).z);
-  const pinch = d3(4, 8) / Math.max(d3(0, 9), 1e-6);
-  return { x: 1 - cx, y: cy, size, flex, roll, pinch };       // x mirrored: your right = picture right
+  const palm3 = Math.max(d3(0, 9), 1e-6);
+  const pinch = d3(4, 8) / palm3;
+  const open = [8, 12, 16, 20].reduce((s, i) => s + d3(0, i), 0) / 4 / palm3;   // ~1.9 open hand, ~0.9 fist
+  return { x: 1 - cx, y: cy, size, flex, roll, pinch, open };  // x mirrored: your right = picture right
 }
 
+// One-Euro filter per feature: heavy smoothing while the hand is still (kills camera jitter), light
+// while it moves fast (no lag). SCALE = a "noticeable" change of each feature, so one beta fits all.
+const SCALE = { x: 0.02, y: 0.02, size: 0.01, flex: 4, roll: 4, pinch: 0.08, open: 0.08 };
+const euro = {};
+let lastT = 0;
+const alphaFor = (cutoff, dt) => 1 / (1 + 1 / (2 * Math.PI * cutoff * dt));
 function smooth(f) {
-  if (!feat) return f;
-  const a = 1 - val("#hgSmooth") / 100;
+  const now = performance.now() / 1000, dt = Math.min(Math.max(now - lastT, 1 / 120), 0.2);
+  lastT = now;
+  if (!feat) { for (const k in f) euro[k] = { x: f[k], dx: 0 }; return { ...f }; }
+  const s = val("#hgSmooth") / 100;                             // 0 = raw, 1 = very smooth
+  const minCut = 4.0 * (1 - s) + 0.15, beta = 0.6;               // Hz, Hz per (scale/s)
   const out = {};
-  for (const k of Object.keys(f)) out[k] = k === "roll" ? feat[k] + a * wrap(f[k] - feat[k]) : feat[k] + a * (f[k] - feat[k]);
+  for (const k of Object.keys(f)) {
+    const e = euro[k] || (euro[k] = { x: f[k], dx: 0 });
+    const d = k === "roll" ? wrap(f[k] - e.x) : f[k] - e.x;
+    e.dx += alphaFor(1.0, dt) * (d / dt - e.dx);                 // smoothed speed
+    const cut = minCut + beta * Math.abs(e.dx) / SCALE[k];
+    e.x += alphaFor(cut, dt) * d;
+    out[k] = e.x;
+  }
   return out;
 }
 
@@ -93,7 +111,9 @@ function target(f, n) {
     r: clamp(ARM_NEUTRAL.r + (f.size / n.size - 1) * val("#hgR") / 100, 0.12, 0.33),
     pitch: $("#hgPitchOff").checked ? ARM_NEUTRAL.pitch : clamp(ARM_NEUTRAL.pitch - (f.flex - n.flex), -90, 30),
     roll: $("#hgRollOff").checked ? null : ARM_NEUTRAL.roll - wrap(f.roll - n.roll),
-    grip: clamp((f.pinch - 0.25) / (0.9 - 0.25), 0, 1) * 100,
+    grip: $("#hgGrip").value === "pinch"
+      ? clamp((f.pinch - 0.25) / (0.9 - 0.25), 0, 1) * 95
+      : clamp((f.open - 1.05) / (1.75 - 1.05), 0, 1) * 95,  // fist = closed, open hand = open
   };
 }
 
@@ -117,6 +137,7 @@ function loop() {
       if ($("#handFollow").checked) send(t);
     } else {
       feat = null;                                             // arm holds (server timeout)
+      for (const k in euro) delete euro[k];
       $("#hrSeen").textContent = "no hand – arm holds still";
     }
   }

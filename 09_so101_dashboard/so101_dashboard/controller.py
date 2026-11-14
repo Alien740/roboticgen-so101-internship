@@ -44,6 +44,10 @@ BOOST = 2.0                      # Shift / gamepad Y
 TABLE_Z = 0.005                  # Cartesian jog keeps the tool point this far above the table
 STALL_S = 1.0
 GRIP_OPEN_MAX = 95.0             # stop the jaw short of its open end stop (see joint_limits)
+ACCEL_PER_RATE = 4.0             # joints reach full preset speed in 1/4 s and brake to a stop (no jerks)
+HAND_HOLD_M = 0.004              # hand moved less than this (and tilted/turned less than HAND_HOLD_DEG)
+HAND_HOLD_DEG = 4.0              # since the last accepted target = camera noise: the arm holds still
+READ_MISS_MAX = 10               # consecutive lost position reads (0.2 s) before it counts as an error
 HAND_SPEEDUP = 3.0               # hand following uses the preset joint speed x this (it is pre-smoothed)
 HAND_TIMEOUT_S = 0.5             # no hand frame for this long -> the arm holds where it is
 HAND_BOX = {"r": (0.12, 0.33), "z": (0.02, 0.30), "pitch": (-90.0, 30.0), "pan": (-90.0, 90.0)}
@@ -109,6 +113,8 @@ class Controller:
         self._pitch_hold = None
         self._stall = {"since": None, "pos": None}
         self._hand = {"t": 0.0, "seed": None, "grip_floor": None}
+        self._vel = {}                       # joint velocity of the goal (deg/s), for smooth accel/brake
+        self._misses = 0
         self._ops = collections.deque()
         self.warnings = collections.deque(maxlen=20)
         self.rate = 0.0
@@ -132,8 +138,7 @@ class Controller:
 
     def warn(self, msg):
         with self.lock:
-            if not self.warnings or self.warnings[-1]["msg"] != msg:
-                self.warnings.append({"t": time.time(), "msg": msg})
+            self._note(msg)
 
     # ================================================================ commands (any thread)
     def connect(self, kind):
@@ -164,6 +169,7 @@ class Controller:
             self.owner = "E-STOP"
             if self.state == "parking":
                 self.state = "ready"
+            self._vel = {}
             if self.measured:
                 self.goal = dict(self.measured)
                 self.target = dict(self.measured)
@@ -172,6 +178,7 @@ class Controller:
         with self.lock:
             self.estop = False
             self.owner = "idle"
+            self._vel = {}
             if self.measured:
                 self.goal = dict(self.measured)
                 self.target = dict(self.measured)
@@ -220,26 +227,32 @@ class Controller:
         frames stop the arm simply holds its last target. Returns the clamped target."""
         clip = lambda v, k: max(HAND_BOX[k][0], min(HAND_BOX[k][1], float(v)))
         pan, r, z, pitch = clip(pan, "pan"), clip(r, "r"), clip(z, "z"), clip(pitch, "pitch")
+        xyz = np.array([r * math.cos(math.radians(pan)), r * math.sin(math.radians(pan)), z])
         with self.lock:
             self._require_ready(motion=True)
             if time.monotonic() - self._hand["t"] > HAND_TIMEOUT_S or self._hand["seed"] is None:
                 self._hand["seed"] = dict(self.goal)         # (re)engaging: start from where the arm is
-            seed = dict(self._hand["seed"])
-        xyz = [r * math.cos(math.radians(pan)), r * math.sin(math.radians(pan)), z]
-        sol, err = K.ik_local(xyz, seed, pitch)
+                self._hand["held"] = None
+            seed, held = dict(self._hand["seed"]), self._hand.get("held")
+        # hold zone: IK amplifies tremor/camera noise (1 deg of pitch -> 1.5 deg at the shoulder),
+        # so small wobbles keep the last accepted target and only real moves get through
+        still = held is not None and np.linalg.norm(xyz - held[0]) < HAND_HOLD_M and abs(pitch - held[1]) < HAND_HOLD_DEG
+        if still:
+            xyz, pitch = held
+        sol, err = (seed, 0.0) if still else K.ik_local(xyz, seed, pitch)
         ok = err < HAND_MAX_ERR and all(self.limits[j][0] <= sol[j] <= self.limits[j][1] for j in K.ARM)
         with self.lock:
             self._require_ready(motion=True)
             self.traj = None
             self.jog["joints"], self.jog["cart"] = {}, {}
             self._hand["t"] = time.monotonic()
-            if ok:
-                self._hand["seed"] = sol
+            if ok and not still:
+                self._hand["seed"], self._hand["held"] = sol, (xyz, pitch)
                 for j in K.ARM:
                     self.target[j] = self._clamp(j, sol[j])
-            else:
+            elif not ok:
                 self._note("hand is outside the arm's reach - holding the last pose")
-            if roll is not None:
+            if roll is not None and abs(float(roll) - self.target.get("wrist_roll", 0.0)) >= HAND_HOLD_DEG:
                 self.target["wrist_roll"] = self._clamp("wrist_roll", float(roll))
             if grip is not None:
                 g = self._clamp("gripper", float(grip))
@@ -361,7 +374,7 @@ class Controller:
                     continue
                 with self.lock:
                     self.backend, self.measured = b, m
-                    self.goal, self.target = dict(m), dict(m)
+                    self.goal, self.target, self._vel = dict(m), dict(m), {}
                     self.state, self.torque, self.estop, self.owner = "ready", True, False, "idle"
             elif op == "close":
                 b = self.backend
@@ -378,23 +391,33 @@ class Controller:
                 m = self.backend.read()
                 with self.lock:
                     self.torque = arg
-                    self.measured, self.goal, self.target = m, dict(m), dict(m)
+                    self.measured, self.goal, self.target, self._vel = m, dict(m), dict(m), {}
                     self.owner = "idle" if arg else "hand-guiding"
 
     def _fail(self, e):
         with self.lock:
             self.error = f"{type(e).__name__}: {e}"
-            self.warnings.append({"t": time.time(), "msg": self.error})
+            self._note(self.error)
         traceback.print_exc()
 
     def _tick(self, dt):
         dt = min(max(dt, 1e-3), 0.1)
-        m = self.backend.read()
+        try:
+            m = self.backend.read()
+            self._misses = 0
+        except ConnectionError:
+            # a lost status packet (power dip / bus noise): hold the goal for this tick; only a
+            # sustained loss is an error worth showing
+            self._misses += 1
+            if self._misses < READ_MISS_MAX:
+                return
+            raise
         then = None
         with self.lock:
             self.measured = m
             if not self.torque:
                 self.goal, self.target = dict(m), dict(m)      # hand-guiding: follow the arm
+                self._vel = {}
                 goal = None
             elif self.estop:
                 goal = dict(self.goal)
@@ -429,13 +452,15 @@ class Controller:
         boost = BOOST if self.jog["boost"] else 1.0
         for j, v in self.jog["joints"].items():
             rate = sp["grip"] if j == "gripper" else sp["joint"]
-            self.target[j] = self._clamp(j, self.goal[j] + v * rate * boost * dt)
+            base = self.target[j] if abs(self.target[j] - self.goal[j]) < 10.0 else self.goal[j]
+            self.target[j] = self._clamp(j, base + v * rate * boost * dt)
         cart = self.jog["cart"]
         if cart:
             d = np.array([cart.get("x", 0.0), cart.get("y", 0.0), cart.get("z", 0.0)]) * sp["cart"] * boost * dt
             if self._pitch_hold is None:
                 self._pitch_hold = K.pitch_deg(K.fk(self.goal))
-            new = cart_step(self.goal, d, self._pitch_hold)
+            near = all(abs(self.target[j] - self.goal[j]) < 10.0 for j in K.ARM)
+            new = cart_step(self.target if near else self.goal, d, self._pitch_hold)
             p = K.fk(new)[:3, 3] if new else None
             if new is None:
                 self._note("can't go further that way (edge of reach)")
@@ -452,8 +477,14 @@ class Controller:
         return None
 
     def _note(self, msg):
-        if not self.warnings or self.warnings[-1]["msg"] != msg:
-            self.warnings.append({"t": time.time(), "msg": msg})
+        """Add a warning; a repeat of the last one only bumps its count and time."""
+        last = self.warnings[-1] if self.warnings else None
+        if last and last["base"] == msg:
+            last["n"] += 1
+            last["t"] = time.time()
+            last["msg"] = f"{msg} (x{last['n']})"
+        else:
+            self.warnings.append({"t": time.time(), "msg": msg, "base": msg, "n": 1})
 
     def _rate_limit(self, dt):
         sp = SPEEDS[self.speed]
@@ -465,8 +496,20 @@ class Controller:
                 rate *= HAND_SPEEDUP
             elif fast or self.jog["boost"]:
                 rate *= 4.0 if fast else BOOST
-            step = rate * dt
-            self.goal[j] = self._clamp(j, self.goal[j] + max(-step, min(step, tgt - self.goal[j])))
+            # velocity with limited acceleration, braking so it stops at the target (no jerks,
+            # no bang-bang chatter around a noisy target)
+            acc = rate * ACCEL_PER_RATE
+            err = tgt - self.goal[j]
+            v = self._vel.get(j, 0.0)
+            # fastest speed that can still brake to 0 at the target in whole dt steps
+            brake = acc * (math.sqrt(dt * dt / 4.0 + 2.0 * abs(err) / acc) - dt / 2.0)
+            v_des = math.copysign(min(rate, brake), err)
+            v += max(-acc * dt, min(acc * dt, v_des - v))
+            step = v * dt
+            if abs(step) >= abs(err) or step * err < 0:
+                step, v = err, (err / dt if abs(err) / dt <= rate else math.copysign(rate, err))
+            self._vel[j] = v
+            self.goal[j] = self._clamp(j, self.goal[j] + step)
         return dict(self.goal)
 
     def _stall_guard(self, m, goal):
@@ -483,6 +526,7 @@ class Controller:
         elif st["since"] and now - st["since"] > STALL_S:
             eased = max(0.0, p - float(self.prof["gripper"].get("hold_squeeze", 2.0)))
             self.goal["gripper"] = self.target["gripper"] = eased
+            self._vel["gripper"] = 0.0
             goal["gripper"] = eased
             self.jog["joints"].pop("gripper", None)
             if self.owner == "hand":

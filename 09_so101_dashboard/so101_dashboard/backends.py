@@ -106,7 +106,8 @@ class RealBackend:
         return self.arm.robot.bus
 
     def read(self):
-        return {k: float(v) for k, v in self.bus.sync_read("Present_Position").items()}
+        # 2 retries like lerobot's own get_observation: single lost packets are common on a 5 V bus
+        return {k: float(v) for k, v in self.bus.sync_read("Present_Position", num_retry=2).items()}
 
     def write(self, goal):
         self.arm.robot.send_action({f"{j}.pos": float(v) for j, v in goal.items()})

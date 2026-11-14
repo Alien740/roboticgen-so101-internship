@@ -165,7 +165,7 @@
         <tr><td>hand toward / away from camera</td><td>tool reaches out / pulls back</td></tr>
         <tr><td>tilt fingers toward / away from camera</td><td>tool points down / up</td></tr>
         <tr><td>rotate hand (like a doorknob)</td><td>wrist roll</td></tr>
-        <tr><td>pinch thumb + index</td><td>gripper closes (spread = open)</td></tr>
+        <tr><td>make a fist / open your hand</td><td>gripper closes / opens (or pinch, see Tuning)</td></tr>
         <tr><td>hand leaves the picture</td><td>arm holds still</td></tr>
         <tr><td><kbd>Space</kbd> / <kbd>Esc</kbd></td><td><b>E-STOP</b> (always)</td></tr>
       </table>
@@ -174,9 +174,11 @@
         <div class="slider"><label for="hgPan">Pan range</label><div class="track"><input type="range" id="hgPan" min="60" max="240" value="150"></div><output>150</output></div>
         <div class="slider"><label for="hgZ">Height range</label><div class="track"><input type="range" id="hgZ" min="10" max="60" value="35"></div><output>35</output></div>
         <div class="slider"><label for="hgR">Reach range</label><div class="track"><input type="range" id="hgR" min="5" max="50" value="25"></div><output>25</output></div>
-        <div class="slider"><label for="hgSmooth">Smoothing</label><div class="track"><input type="range" id="hgSmooth" min="0" max="90" value="60"></div><output>60</output></div>
+        <div class="slider"><label for="hgSmooth">Smoothing</label><div class="track"><input type="range" id="hgSmooth" min="0" max="95" value="70"></div><output>70</output></div>
       </div>
       <div class="row wrap">
+        <label class="toggle">Gripper
+          <select id="hgGrip" class="btn"><option value="fist">whole hand: fist = close</option><option value="pinch">pinch thumb + index</option></select></label>
         <label class="toggle"><input type="checkbox" id="hgMirror"> <span>I face the robot (mirror left/right)</span></label>
         <label class="toggle"><input type="checkbox" id="hgRollOff"> <span>Lock wrist roll</span></label>
         <label class="toggle"><input type="checkbox" id="hgPitchOff"> <span>Lock tool pitch</span></label>
