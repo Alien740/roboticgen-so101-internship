@@ -47,7 +47,8 @@ GRIP_OPEN_MAX = 95.0             # stop the jaw short of its open end stop (see 
 ACCEL_PER_RATE = 4.0             # joints reach full preset speed in 1/4 s and brake to a stop (no jerks)
 HAND_HOLD_M = 0.004              # hand moved less than this (and tilted/turned less than HAND_HOLD_DEG)
 HAND_HOLD_DEG = 4.0              # since the last accepted target = camera noise: the arm holds still
-MIMIC_HOLD_DEG = 1.5             # copied arm joints: smaller changes than this are tracking noise
+MIMIC_HOLD_DEG = 2.0             # copied arm joints: smaller changes than this are tracking noise
+MIMIC_SPEEDUP = 2.0              # copied joints follow a bit slower than the hand cursor: smoother
 READ_MISS_MAX = 10               # consecutive lost position reads (0.2 s) before it counts as an error
 HAND_SPEEDUP = 3.0               # hand following uses the preset joint speed x this (it is pre-smoothed)
 HAND_TIMEOUT_S = 0.5             # no hand frame for this long -> the arm holds where it is
@@ -546,11 +547,11 @@ class Controller:
     def _rate_limit(self, dt):
         sp = SPEEDS[self.speed]
         fast = self.traj is not None or bool(self.jog["cart"])     # these are already smooth
-        hand = self.owner in ("hand", "mimic")
+        follow = {"hand": HAND_SPEEDUP, "mimic": MIMIC_SPEEDUP}.get(self.owner)
         for j, tgt in self.target.items():
             rate = sp["grip"] if j == "gripper" else sp["joint"]
-            if hand:
-                rate *= HAND_SPEEDUP
+            if follow:
+                rate *= follow
             elif fast or self.jog["boost"]:
                 rate *= 4.0 if fast else BOOST
             # velocity with limited acceleration, braking so it stops at the target (no jerks,

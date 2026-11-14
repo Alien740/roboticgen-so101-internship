@@ -167,10 +167,10 @@
       <div id="sideHelp">
         <h3>How to move <small>stand or sit SIDEWAYS to the camera, so it sees your arm in profile</small></h3>
         <table class="keys">
-          <tr><td>hand out in front / close to you</td><td>gripper reaches out (33 cm) / comes near the base (15 cm)</td></tr>
-          <tr><td>hand low / high</td><td>gripper at the table / 25 cm up</td></tr>
-          <tr><td>point your hand down / level</td><td>gripper points down / forward</td></tr>
-          <tr><td>make a fist / open your hand</td><td>gripper closes / opens</td></tr>
+          <tr><td>raise your upper arm forward / lower it</td><td>robot shoulder leans out / back</td></tr>
+          <tr><td>straighten your elbow / bend it (forearm up)</td><td>robot forearm goes down / up</td></tr>
+          <tr><td>bend your hand down / up</td><td>gripper points down / up</td></tr>
+          <tr><td>curl your fingers into a fist / open them</td><td>gripper closes fully / opens</td></tr>
           <tr><td>Base direction slider</td><td>turns the plane the robot works in</td></tr>
           <tr><td>arm leaves the picture</td><td>robot holds still</td></tr>
           <tr><td><kbd>Space</kbd> / <kbd>Esc</kbd></td><td><b>E-STOP</b> (always)</td></tr>
@@ -178,9 +178,11 @@
         <div class="sliders">
           <div class="slider"><label for="planePan">Base direction</label><div class="track"><input type="range" id="planePan" min="-75" max="75" step="1" value="0"></div><output>0°</output></div>
         </div>
-        <p class="muted">The robot moves only in one vertical plane, like your arm seen from the side; the base stays at the
-          direction above. It finds which way you face and which arm is nearer the camera by itself. Reach is measured
-          in your own arm lengths; the gripper stops at the edge of reach and never goes below the table.</p>
+        <p class="muted">Your upper arm, elbow and hand drive the robot's shoulder, elbow and wrist in one vertical plane
+          (base fixed at the slider, + = the robot's right). When you tick Follow, your current arm shape is tied to the
+          robot's current pose and only your movements from there move it, so it never jumps. Each joint stays in a
+          safe range and the gripper never goes below the table. It finds which way you face and which arm is nearer
+          the camera by itself.</p>
       </div>
 
       <div id="armHelp" hidden>

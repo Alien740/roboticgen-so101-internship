@@ -1,9 +1,12 @@
 // Hand / arm control from this computer's camera (MediaPipe, in the browser). Three modes:
 //
-// "Side view" (default): you stand side-on to the camera, which sees your arm in profile - 2D image
-//   landmarks, no depth guessing, so it is the steadiest. The robot works in ONE vertical plane (base
-//   fixed at the Base direction slider): hand forward/up relative to your shoulder, in arm lengths ->
-//   gripper reach/height (SIDE_SPACE), hand direction -> tool pitch, fingers -> gripper.
+// "Side view" (default): you sit/stand side-on to the camera, which sees your arm in profile (2D,
+//   no depth guessing). Direct joint control in one vertical plane, base fixed by a slider:
+//   your upper arm -> robot shoulder, your elbow -> robot elbow, your hand's angle -> robot wrist,
+//   your finger curl -> gripper. Clutch: when following starts, your arm's angles are tied to the
+//   robot's current joints, then your angle CHANGES move it (SIDE_JOINTS) - so it never jumps.
+//   Joint angles are One-Euro filtered, clamped to safe ranges and sent at a steady 20 Hz to
+//   POST /api/mimic (server: noise hold, smooth accel/brake, table guard).
 //
 // "My whole arm" (default): body tracking finds where your hand is relative to your shoulder, as a
 //   fraction of your arm's length, and puts the gripper at the matching spot of the robot's picking
@@ -34,10 +37,14 @@ const ARM_SPACE = {
 };
 const HAND_BONES = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [5, 9], [9, 10], [10, 11], [11, 12],
   [9, 13], [13, 14], [14, 15], [15, 16], [13, 17], [0, 17], [17, 18], [18, 19], [19, 20]];
-const SIDE_SPACE = {
-  reach:  { from: [0.1, 1.0],  to: [0.15, 0.33] },           // hand at your shoulder line -> arm straight out
-  height: { from: [-0.9, 0.3], to: [0.02, 0.25] },           // hand low by your hip -> above your shoulder
+// your angle change -> robot joint change (sign) and the robot's safe range for this mode (deg)
+const SIDE_JOINTS = {
+  shoulder_lift: { from: "lift",  sign: +1, range: [-95, 60] },  // raise your upper arm forward = lean out
+  elbow_flex:    { from: "elbow", sign: -1, range: [-60, 97] },  // bend your elbow (forearm up) = forearm up
+  wrist_flex:    { from: "wrist", sign: -1, range: [-40, 95] },  // hand down = gripper down
 };
+// finger curl (mean bend of the 4 fingers over their 3 joints, deg): open hand ~30, fist ~200+
+const CURL_OPEN = 70, CURL_CLOSED = 150;
 const SIDES = { right: { sh: 12, el: 14, wr: 16, idx: 20 }, left: { sh: 11, el: 13, wr: 15, idx: 19 } };
 
 const video = $("#handVideo"), canvas = $("#handCanvas"), ctx = canvas.getContext("2d");
@@ -127,16 +134,19 @@ function handFeatures(lm, world) {
 function gripFeatures(world) {
   const d3 = (a, b) => Math.hypot(...sub(world[a], world[b]));
   const palm3 = Math.max(d3(0, 9), 1e-6);
-  return {
-    pinch: d3(4, 8) / palm3,
-    open: [8, 12, 16, 20].reduce((s, i) => s + d3(0, i), 0) / 4 / palm3,   // ~1.9 open hand, ~0.9 fist
-  };
+  // curl = bend at the knuckle, middle and end joint of each finger: 3D angles, so it reads the
+  // same whichever way the hand faces the camera (fingertip distances do not, seen edge-on)
+  const curl = [[5, 6, 7, 8], [9, 10, 11, 12], [13, 14, 15, 16], [17, 18, 19, 20]].reduce((s, [m, p, d, t]) =>
+    s + angle(sub(world[m], world[0]), sub(world[p], world[m])) + angle(sub(world[p], world[m]), sub(world[d], world[p]))
+      + angle(sub(world[d], world[p]), sub(world[t], world[d])), 0) / 4;
+  return { pinch: d3(4, 8) / palm3, curl };
 }
 
 function gripValue(f) {
-  return $("#hgGrip").value === "pinch"
+  const g = $("#hgGrip").value === "pinch"
     ? clamp((f.pinch - 0.25) / (0.9 - 0.25), 0, 1) * 95
-    : clamp((f.open - 1.05) / (1.75 - 1.05), 0, 1) * 95;    // fist = closed, open hand = open
+    : clamp((CURL_CLOSED - f.curl) / (CURL_CLOSED - CURL_OPEN), 0, 1) * 95;   // fist = closed
+  return g < 12 ? 0 : g;                                       // a closing hand snaps fully shut
 }
 
 // ------------------------------------------------------------------ body -> arm angles
@@ -173,7 +183,7 @@ function armFeatures(W, side, hand, prev, hipsSeen = true) {
     ft.roll = wrap(deg(Math.atan2(dot(cross(ref, p), ax), dot(ref, p))) - 90);
     Object.assign(ft, gripFeatures(hand));
   } else if (prev) {
-    for (const k of ["roll", "pinch", "open"]) if (k in prev) ft[k] = prev[k];
+    for (const k of ["roll", "pinch", "curl"]) if (k in prev) ft[k] = prev[k];
   }
   return ft;
 }
@@ -189,7 +199,7 @@ function armTarget(f) {
     z: map("height", f.height),
     pitch: clamp(f.pitch, -90, 0),
     roll: "roll" in f && !$("#hgRollOff").checked ? map("roll", f.roll) : null,
-    grip: "open" in f ? gripValue(f) : null,
+    grip: "curl" in f ? gripValue(f) : null,
   };
 }
 
@@ -204,36 +214,40 @@ function handAt(hres, wristPx, image = false) {
 }
 
 // ------------------------------------------------------------------ side view: arm in profile
-// Everything in image coordinates (x scaled by the aspect ratio so angles are true), y up = -y.
+// Image coordinates (x scaled by the aspect ratio so angles are true). dirAngle: forward = 0,
+// up = +90, down = -90, whichever way you face.
 function sideFeatures(P, s, hand, prev) {
   const ar = video.videoWidth / video.videoHeight;
   const pt = p => [p.x * ar, p.y];
   const [sh, el, wr] = [pt(P[s.sh]), pt(P[s.el]), pt(P[s.wr])];
-  // facing: the nose is in front of the shoulder; keep the last answer when it is ambiguous
-  const nose = pt(P[0]);
+  const nose = pt(P[0]);                                      // the nose is in front of the shoulder
   if (Math.abs(nose[0] - sh[0]) > 0.02) facing = Math.sign(nose[0] - sh[0]);
-  // arm length: the longest seen recently (a foreshortened arm would otherwise look "close")
-  const L = Math.hypot(el[0] - sh[0], el[1] - sh[1]) + Math.hypot(wr[0] - el[0], wr[1] - el[1]);
-  armLen = Math.max(armLen * 0.998, L);
-  const hd = hand ? [ (hand.lm[9].x - hand.lm[0].x) * ar, hand.lm[9].y - hand.lm[0].y ]
+  const dirAngle = v => deg(Math.atan2(-v[1], facing * v[0]));
+  const upper = [el[0] - sh[0], el[1] - sh[1]], fore = [wr[0] - el[0], wr[1] - el[1]];
+  const hd = hand ? [(hand.lm[9].x - hand.lm[0].x) * ar, hand.lm[9].y - hand.lm[0].y]
     : [pt(P[s.idx])[0] - wr[0], pt(P[s.idx])[1] - wr[1]];
+  // side-on check: seen from the front, the shoulders are far apart compared with the upper arm
+  const shoulderGap = Math.abs(pt(P[11])[0] - pt(P[12])[0]);
   const f = {
-    reach: facing * (wr[0] - sh[0]) / armLen,
-    height: (sh[1] - wr[1]) / armLen,
-    pitch: deg(Math.atan2(-hd[1], facing * hd[0])),           // level forward = 0, down = -90
+    lift: dirAngle(upper) + 90,                                // 0 hanging, 90 forward, 180 up
+    elbow: wrap(dirAngle(fore) - dirAngle(upper)),             // 0 straight, +90 forearm bent up
+    wrist: wrap(dirAngle(hd) - dirAngle(fore)),                // + hand bent up, - bent down
+    frontal: shoulderGap / Math.max(Math.hypot(...upper), 1e-3),
   };
   if (hand) Object.assign(f, gripFeatures(hand.world));
-  else if (prev) for (const k of ["pinch", "open"]) if (k in prev) f[k] = prev[k];
+  else if (prev) for (const k of ["pinch", "curl"]) if (k in prev) f[k] = prev[k];
   return f;
 }
 
-function sideTarget(f) {
-  const map = (k, v) => {
-    const { from: [a, b], to: [c, d] } = SIDE_SPACE[k];
-    return c + (d - c) * clamp((v - a) / (b - a), 0, 1);
-  };
-  return { pan: val("#planePan"), r: map("reach", f.reach), z: map("height", f.height),
-    pitch: clamp(f.pitch, -90, 30), roll: null, grip: "open" in f ? gripValue(f) : null };
+// robot joints = joints when following started + your angle changes since then
+function sideTarget(f, ref) {
+  const t = { shoulder_pan: val("#planePan") };
+  for (const [j, m] of Object.entries(SIDE_JOINTS)) {
+    const base = ref ? ref.robot[j] : 0, d = ref ? wrap(f[m.from] - ref.human[m.from]) : 0;
+    t[j] = clamp(base + m.sign * d, ...m.range);
+  }
+  if ("curl" in f || "pinch" in f) t.gripper = gripValue(f);
+  return t;
 }
 
 // side-on, the arm nearer the camera is the better-seen one
@@ -246,7 +260,7 @@ function nearerSide(P) {
 // One-Euro filter per feature: heavy smoothing while still (kills camera jitter), light while moving
 // fast (no lag). SCALE = a "noticeable" change of each feature, so one beta fits all.
 const SCALE = { x: 0.02, y: 0.02, size: 0.01, flex: 4, roll: 4, pinch: 0.08, open: 0.08,
-  reach: 0.02, height: 0.02, pitch: 4, pan: 3 };
+  reach: 0.02, height: 0.02, pitch: 4, pan: 3, lift: 3, elbow: 3, wrist: 4, frontal: 0.1, curl: 10 };
 const euro = {};
 let lastT = 0;
 const alphaFor = (cutoff, dt) => 1 / (1 + 1 / (2 * Math.PI * cutoff * dt));
@@ -259,7 +273,7 @@ function smooth(f) {
   for (const k of Object.keys(f)) {
     const e = euro[k];
     if (!e) { euro[k] = { x: f[k], dx: 0 }; out[k] = f[k]; continue; }
-    const d = k === "roll" || k === "pan" ? wrap(f[k] - e.x) : f[k] - e.x;
+    const d = ["roll", "pan", "elbow", "wrist"].includes(k) ? wrap(f[k] - e.x) : f[k] - e.x;
     e.dx += alphaFor(1.0, dt) * (d / dt - e.dx);                 // smoothed speed
     const cut = minCut + beta * Math.abs(e.dx) / SCALE[k];
     e.x += alphaFor(cut, dt) * d;
@@ -375,20 +389,33 @@ function sideFrame(ts) {
   drawArm(P, s, false);
   if (hand) drawHand(hand.lm);
   feat = smooth(sideFeatures(P, s, hand, feat));
-  const t = sideTarget(feat);
-  showArm(t, !!hand);
+  if (feat.frontal > 0.8) {                                    // facing the camera: angles are meaningless
+    release();
+    status("Turn SIDEWAYS – the camera should see your arm from the side", "facing the camera – robot holds still");
+    return;
+  }
   steady++;
-  if (!follow || steady < STEADY_FRAMES) {
+  if (follow && steady >= STEADY_FRAMES && !engage && S && S.measured)
+    engage = { human: { ...feat }, robot: { ...S.measured } };  // clutch in: your pose = robot's pose now
+  const t = sideTarget(feat, engage);
+  showSide(t, !!hand);
+  if (!follow || !engage) {
     status(follow ? "Hold still…" : "Tick “Follow me” to move the robot", follow ? `${side} arm – hold still` : `${side} arm`);
     return;
   }
-  if (!engage) engage = { t0: performance.now(), from: armPose() };
-  const u = clamp((performance.now() - engage.t0) / 1000 / RAMP_S, 0, 1);
-  const e = engage.from, mix = (a, b) => a + (b - a) * u;      // ease from where the gripper is
-  const body = { pan: t.pan, r: mix(e.r, t.r), z: mix(Math.max(e.z, 0.02), t.z), pitch: mix(clamp(e.pitch, -90, 30), t.pitch) };
-  if (t.grip !== null) body.grip = t.grip;
-  status("", u < 1 ? `${side} arm – easing in` : `${side} arm – following`);
-  send("hand", body);
+  status("", `${side} arm – following`);
+  send("mimic", { joints: t });
+}
+
+function showSide(t, hand) {
+  $("#hrPan").textContent = `${t.shoulder_pan.toFixed(0)}°`;
+  $("#hrR").textContent = `shoulder ${t.shoulder_lift.toFixed(0)}°`;
+  $("#hrZ").textContent = `elbow ${t.elbow_flex.toFixed(0)}°`;
+  $("#hrPitch").textContent = `wrist ${t.wrist_flex.toFixed(0)}°`;
+  $("#hrRoll").textContent = "fixed";
+  $("#hrGrip").textContent = "gripper" in t
+    ? `${t.gripper.toFixed(0)} %  (finger curl ${feat.curl !== undefined ? feat.curl.toFixed(0) + "°" : "–"})${hand ? "" : " – hand not seen"}`
+    : "– (show your hand)";
 }
 
 function status(onVideo, line) {
@@ -478,8 +505,8 @@ $("#handFollow").onchange = e => {
   release();                                                   // (re)engage on the next steady frames
   if (!e.target.checked) return;
   if (!ready()) { e.target.checked = false; toast("Connect the arm (or the simulated one) first"); return; }
-  if (mode === "side" && S && S.tool) {                       // work in the plane the robot already faces
-    const p = Math.round(clamp(armPose().pan, -75, 75));
+  if (mode === "side" && S && S.measured) {                   // work in the plane the robot already faces
+    const p = Math.round(clamp(S.measured.shoulder_pan, -75, 75));
     $("#planePan").value = p; $("#planePan").closest(".slider").querySelector("output").textContent = `${p}°`;
   }
   toast(mode !== "hand" ? "Following: hold still a moment – the robot eases into your arm's pose"
