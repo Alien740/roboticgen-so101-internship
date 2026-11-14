@@ -1,5 +1,6 @@
 """Dashboard tests with the simulated arm (no robot, no camera)."""
 import json
+import math
 import threading
 import time
 import urllib.error
@@ -83,6 +84,28 @@ def test_jog_stops_by_itself_when_input_stops(ctl):
 def test_wrist_roll_limited_to_measured_free_range(ctl):
     ctl.set_joints({"wrist_roll": 120})
     assert ctl.snapshot()["target"]["wrist_roll"] == 75.0
+
+
+def test_hand_input_reaches_target_and_clamps(ctl):
+    for _ in range(60):                                   # ~3 s of hand frames at 20 Hz
+        r = ctl.hand_input(pan=30, r=0.22, z=0.12, pitch=-40, roll=20, grip=60)
+        time.sleep(0.05)
+    assert r["reachable"]
+    time.sleep(0.5)
+    s = ctl.snapshot()
+    x, y, z = (v / 1000 for v in s["tool"]["xyz_mm"])
+    assert abs(math.degrees(math.atan2(y, x)) - 30) < 2
+    assert abs(math.hypot(x, y) - 0.22) < 0.01 and abs(z - 0.12) < 0.01
+    assert abs(s["measured"]["gripper"] - 60) < 2 and s["owner"] == "hand"
+    out = ctl.hand_input(pan=500, r=9, z=-1, pitch=-200, roll=500)
+    assert (out["pan"], out["r"], out["z"], out["pitch"]) == (90.0, 0.33, 0.02, -90.0)
+    assert ctl.snapshot()["target"]["wrist_roll"] == 75.0
+
+
+def test_hand_input_refused_during_estop(ctl):
+    ctl.emergency_stop()
+    with pytest.raises(RuntimeError):
+        ctl.hand_input(pan=0, r=0.2, z=0.1, pitch=-40)
 
 
 def test_estop_freezes_and_latches(ctl):

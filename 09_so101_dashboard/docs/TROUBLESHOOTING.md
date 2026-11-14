@@ -16,3 +16,8 @@ Robot, camera and task problems are covered in
 | 3D twin missing | No WebGL2, or `static/twin_mesh.json` missing | Use Chrome/Edge/Firefox; rebuild with `python -m so101_dashboard.mesh <stl folder>` |
 | Port 8000 already in use | Another dashboard or app is running | Close it, or `so101-dashboard --port 8001` |
 | Phone can't open the `--lan` link | Firewall blocks the port, or the phone is on another network | Allow Python through Windows Firewall (private networks); same Wi-Fi |
+| Hand tab: "Camera / model failed: Permission denied" | The browser (or macOS) has not allowed the camera | Click the camera icon in the address bar → Allow; macOS: System Settings → Privacy & Security → Camera → enable your browser. Embedded preview panes cannot use the camera — open the page in Chrome/Safari |
+| Hand tab: "Camera / model failed: Failed to fetch" | The hand model is downloaded from jsdelivr / Google and there is no internet | Connect once to load it (the browser caches it) |
+| Hand tab: "hand is outside the arm's reach – holding the last pose" | The mapped target is beyond what the IK can reach with that pitch | Move the hand back toward neutral, lower the Reach/Height range sliders, or press Set neutral |
+| Hand tab: arm moves the wrong way left/right | You face the robot instead of standing behind it | Tick "I face the robot (mirror left/right)" |
+| Hand tab: jittery arm | Webcam noise | Raise Smoothing; use Slow speed; better light on your hand |

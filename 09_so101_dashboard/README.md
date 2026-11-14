@@ -38,6 +38,11 @@ Options: `--profile NAME` (framework profile, default `my_so101`), `--port 8000`
 - **Keyboard**: `Q/E W/S A/D Z/X R/F T/G` joints, arrows + PgUp/PgDn tool, Shift boost, 1/2/3 speed
 - **Gamepad**: same layout as the old `gamepad_control.py` (sticks pan/lift and roll/flex, LB/RB
   elbow, triggers gripper, Y boost, A home), Back switches to tool mode
+- **Hand**: the arm mimics your hand through the computer's webcam (MediaPipe hand tracking in
+  the browser): hand left/right = base, up/down = height, toward/away from the camera = reach,
+  finger tilt = tool pitch, doorknob turn = wrist roll, pinch = gripper; hand out of view = the arm
+  holds. The server does the IK (`/api/hand`) so every limit and the E-STOP still apply. Needs
+  Chrome/Safari with camera permission and internet the first time (model from jsdelivr / Google)
 - **Status**: per-motor position, goal, temperature, voltage, load, torque and fault flags; OS,
   Python, lerobot and serial ports; **Run doctor** button
 

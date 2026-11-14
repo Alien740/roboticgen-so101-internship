@@ -43,6 +43,10 @@ SPEEDS = {   # joint deg/s, Cartesian m/s, gripper units/s
 BOOST = 2.0                      # Shift / gamepad Y
 TABLE_Z = 0.005                  # Cartesian jog keeps the tool point this far above the table
 STALL_S = 1.0
+HAND_SPEEDUP = 3.0               # hand following uses the preset joint speed x this (it is pre-smoothed)
+HAND_TIMEOUT_S = 0.5             # no hand frame for this long -> the arm holds where it is
+HAND_BOX = {"r": (0.12, 0.33), "z": (0.02, 0.30), "pitch": (-90.0, 30.0), "pan": (-90.0, 90.0)}
+HAND_MAX_ERR = 0.015             # IK further than this from the hand target -> keep the last pose
 
 
 def joint_limits(prof):
@@ -100,6 +104,7 @@ class Controller:
         self.jog = {"joints": {}, "cart": {}, "boost": False, "t": 0.0, "source": ""}
         self._pitch_hold = None
         self._stall = {"since": None, "pos": None}
+        self._hand = {"t": 0.0, "seed": None, "grip_floor": None}
         self._ops = collections.deque()
         self.warnings = collections.deque(maxlen=20)
         self.rate = 0.0
@@ -203,6 +208,46 @@ class Controller:
                 if k in self.limits:
                     self.target[k] = self._clamp(k, float(v))
             self.owner = f"manual:{source}"
+
+    def hand_input(self, pan, r, z, pitch, roll=None, grip=None):
+        """Follow a tracked hand: tool point at (pan deg, radius m, height m) with the given pitch,
+        plus wrist roll (deg) and gripper (0-100). Values are clamped to a safe box; the IK runs
+        here (caller's thread, ~8 ms) so the control loop stays short. Send at ~10-30 Hz; when the
+        frames stop the arm simply holds its last target. Returns the clamped target."""
+        clip = lambda v, k: max(HAND_BOX[k][0], min(HAND_BOX[k][1], float(v)))
+        pan, r, z, pitch = clip(pan, "pan"), clip(r, "r"), clip(z, "z"), clip(pitch, "pitch")
+        with self.lock:
+            self._require_ready(motion=True)
+            if time.monotonic() - self._hand["t"] > HAND_TIMEOUT_S or self._hand["seed"] is None:
+                self._hand["seed"] = dict(self.goal)         # (re)engaging: start from where the arm is
+            seed = dict(self._hand["seed"])
+        xyz = [r * math.cos(math.radians(pan)), r * math.sin(math.radians(pan)), z]
+        sol, err = K.ik_local(xyz, seed, pitch)
+        ok = err < HAND_MAX_ERR and all(self.limits[j][0] <= sol[j] <= self.limits[j][1] for j in K.ARM)
+        with self.lock:
+            self._require_ready(motion=True)
+            self.traj = None
+            self.jog["joints"], self.jog["cart"] = {}, {}
+            self._hand["t"] = time.monotonic()
+            if ok:
+                self._hand["seed"] = sol
+                for j in K.ARM:
+                    self.target[j] = self._clamp(j, sol[j])
+            else:
+                self._note("hand is outside the arm's reach - holding the last pose")
+            if roll is not None:
+                self.target["wrist_roll"] = self._clamp("wrist_roll", float(roll))
+            if grip is not None:
+                g = self._clamp("gripper", float(grip))
+                floor = self._hand["grip_floor"]
+                if floor is not None:                         # stall guard eased a grip: don't re-squeeze
+                    if g > floor + 10.0:
+                        self._hand["grip_floor"] = None
+                    else:
+                        g = max(g, floor)
+                self.target["gripper"] = g
+            self.owner = "hand"
+        return {"pan": pan, "r": r, "z": z, "pitch": pitch, "reachable": ok}
 
     def goto(self, pose, duration=None):
         """Smooth move to a profile pose name or a {joint: deg} dict (joints left out stay)."""
@@ -409,9 +454,12 @@ class Controller:
     def _rate_limit(self, dt):
         sp = SPEEDS[self.speed]
         fast = self.traj is not None or bool(self.jog["cart"])     # these are already smooth
+        hand = self.owner == "hand"
         for j, tgt in self.target.items():
             rate = sp["grip"] if j == "gripper" else sp["joint"]
-            if fast or self.jog["boost"]:
+            if hand:
+                rate *= HAND_SPEEDUP
+            elif fast or self.jog["boost"]:
                 rate *= 4.0 if fast else BOOST
             step = rate * dt
             self.goal[j] = self._clamp(j, self.goal[j] + max(-step, min(step, tgt - self.goal[j])))
@@ -433,5 +481,7 @@ class Controller:
             self.goal["gripper"] = self.target["gripper"] = eased
             goal["gripper"] = eased
             self.jog["joints"].pop("gripper", None)
+            if self.owner == "hand":
+                self._hand["grip_floor"] = eased
             st["since"], st["pos"] = None, None
             self._note(f"gripper is holding something at {p:.0f} - eased off to protect the motor")

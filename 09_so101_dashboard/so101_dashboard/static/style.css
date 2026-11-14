@@ -147,3 +147,9 @@ kbd { display: inline-block; min-width: 20px; text-align: center; padding: 1px 5
   .slider { grid-template-columns: 80px 1fr 54px; }
   .pad { grid-template-columns: repeat(3, 64px); }
 }
+
+/* ---------- hand control */
+.hand-view { position: relative; background: var(--twin-bg); border-radius: var(--radius); aspect-ratio: 4 / 3; overflow: hidden; }
+.hand-view video, .hand-view canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+.hand-msg { position: absolute; inset: auto 0 8px 0; text-align: center; color: var(--muted); font-size: 13px; }
+.hand-read { grid-template-columns: repeat(2, auto 1fr); }

@@ -8,7 +8,7 @@ Dashboard-specific rules:
 
 1. Start the server in the background: `so101-dashboard` (`--sim` without hardware). It runs until stopped.
 2. Never press motion controls (poses, sliders, jog, keyboard, gamepad) or call the motion API
-   (`/api/goto`, `/api/set`, `/api/jog`, `/api/torque`) without the person's explicit go-ahead.
+   (`/api/goto`, `/api/set`, `/api/jog`, `/api/hand`, `/api/torque`) without the person's explicit go-ahead.
    `/api/estop` is always allowed.
 3. The dashboard holds the serial port while connected: framework commands (`so101 doctor`, tasks)
    need the person to press **Park & disconnect** first.

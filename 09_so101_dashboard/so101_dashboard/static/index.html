@@ -59,6 +59,7 @@
     <nav class="tabs" role="tablist">
       <button class="tab on" data-tab="manual">Manual</button>
       <button class="tab" data-tab="status">Status</button>
+      <button class="tab" data-tab="hand">Hand</button>
       <button class="tab soon" disabled title="subset 2">Motions</button>
       <button class="tab soon" disabled title="subset 2">Record</button>
       <button class="tab soon" disabled title="subset 3">Tasks</button>
@@ -135,11 +136,59 @@
       <button class="btn" id="btnDoctor">Run doctor</button>
       <pre id="doctorOut" class="console" hidden></pre>
     </div>
+    <div class="tabpane" id="tab-hand" hidden>
+      <h3>Hand control <small>the arm mimics your hand through this computer's camera</small></h3>
+      <div class="hand-view">
+        <video id="handVideo" playsinline muted></video>
+        <canvas id="handCanvas"></canvas>
+        <div id="handMsg" class="hand-msg">Camera off</div>
+      </div>
+      <div class="row wrap">
+        <button class="btn" id="handCam">Start camera</button>
+        <button class="btn" id="handNeutral" disabled title="hold your hand where the arm's middle pose should be">Set neutral</button>
+        <label class="toggle"><input type="checkbox" id="handFollow" disabled> <span><b>Follow my hand</b> (arm moves)</span></label>
+      </div>
+      <dl class="kv hand-read">
+        <dt>hand</dt><dd id="hrSeen">–</dd>
+        <dt>base pan</dt><dd id="hrPan">–</dd>
+        <dt>reach</dt><dd id="hrR">–</dd>
+        <dt>height</dt><dd id="hrZ">–</dd>
+        <dt>tool pitch</dt><dd id="hrPitch">–</dd>
+        <dt>wrist roll</dt><dd id="hrRoll">–</dd>
+        <dt>gripper</dt><dd id="hrGrip">–</dd>
+      </dl>
+      <h3>How to move</h3>
+      <table class="keys">
+        <tr><td>hand left / right</td><td>base turns</td></tr>
+        <tr><td>hand up / down</td><td>tool up / down</td></tr>
+        <tr><td>hand toward / away from camera</td><td>tool reaches out / pulls back</td></tr>
+        <tr><td>tilt fingers toward / away from camera</td><td>tool points down / up</td></tr>
+        <tr><td>rotate hand (like a doorknob)</td><td>wrist roll</td></tr>
+        <tr><td>pinch thumb + index</td><td>gripper closes (spread = open)</td></tr>
+        <tr><td>hand leaves the picture</td><td>arm holds still</td></tr>
+        <tr><td><kbd>Space</kbd> / <kbd>Esc</kbd></td><td><b>E-STOP</b> (always)</td></tr>
+      </table>
+      <h3>Tuning</h3>
+      <div class="sliders">
+        <div class="slider"><label for="hgPan">Pan range</label><div class="track"><input type="range" id="hgPan" min="60" max="240" value="150"></div><output>150</output></div>
+        <div class="slider"><label for="hgZ">Height range</label><div class="track"><input type="range" id="hgZ" min="10" max="60" value="35"></div><output>35</output></div>
+        <div class="slider"><label for="hgR">Reach range</label><div class="track"><input type="range" id="hgR" min="5" max="50" value="25"></div><output>25</output></div>
+        <div class="slider"><label for="hgSmooth">Smoothing</label><div class="track"><input type="range" id="hgSmooth" min="0" max="90" value="60"></div><output>60</output></div>
+      </div>
+      <div class="row wrap">
+        <label class="toggle"><input type="checkbox" id="hgMirror"> <span>I face the robot (mirror left/right)</span></label>
+        <label class="toggle"><input type="checkbox" id="hgRollOff"> <span>Lock wrist roll</span></label>
+        <label class="toggle"><input type="checkbox" id="hgPitchOff"> <span>Lock tool pitch</span></label>
+      </div>
+      <p class="muted">Start on <b>Slow</b>. The hand model loads from the internet the first time (jsdelivr / Google).
+        Limits, E-STOP and the gripper stall guard still apply.</p>
+    </div>
   </section>
 </main>
 
 <div id="toast" class="toast" hidden></div>
 <script src="twin.js"></script>
 <script src="app.js"></script>
+<script type="module" src="hand.js"></script>
 </body>
 </html>
