@@ -291,8 +291,8 @@ def test_task_runner_drives_a_framework_task(ctl):
     from so101_dashboard.tasks import TaskRunner
     prof = P.load("my_so101")
     tr = TaskRunner(prof, ctl)
-    if tr.running():                                         # a leftover from an earlier run
-        tr.stop(); wait(lambda: not tr.running(), timeout=20)
+    if tr.running():                                         # the shared task slot is busy: maybe the
+        pytest.skip("a framework task is running (real session?) - not touching it")   # user's real session
     with pytest.raises(ValueError):
         tr.start("rm -rf /")                                 # only known tasks
     tr.start("demo")                                         # no hardware: practises prompt/answer

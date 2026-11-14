@@ -177,3 +177,29 @@ button.btn:disabled { opacity: .45; cursor: not-allowed; }
 .ailog .tool { align-self: flex-start; font: 12px ui-monospace, monospace; color: var(--muted); padding: 2px 11px; }
 .ailog .error { align-self: flex-start; color: var(--bad); }
 .ailog .busy { align-self: flex-start; color: var(--muted); font-style: italic; }
+
+/* ---------- Draw guide */
+.drawsetup { display: grid; grid-template-columns: 200px 1fr; gap: 14px; align-items: start; margin-bottom: 10px; }
+@media (max-width: 700px) { .drawsetup { grid-template-columns: 1fr; } }
+.a4map { width: 100%; max-width: 220px; }
+.a4map .sheet { fill: #fff; stroke: var(--line); stroke-width: 1.5; }
+.a4map .draw { fill: none; stroke: var(--teal); stroke-width: 2; stroke-dasharray: 4 3; }
+.a4map .dot { fill: var(--teal); }
+.a4map .base { fill: var(--navy); }
+.a4map .base + .lbl { fill: #fff; font-weight: 700; }
+.a4map .dim, .a4map .arrow { stroke: var(--muted); stroke-width: 1; fill: none; }
+.a4map .lbl { font: 9px system-ui, sans-serif; fill: var(--muted); text-anchor: middle; }
+.a4map .lbl.r { text-anchor: end; } .a4map .lbl.l { text-anchor: start; }
+.stepper { display: flex; flex-wrap: wrap; gap: 4px; list-style: none; padding: 0; margin: 6px 0 10px; counter-reset: s; }
+.stepper li { counter-increment: s; font-size: 12px; padding: 4px 9px; border-radius: 99px; background: var(--chip); color: var(--muted); }
+.stepper li::before { content: counter(s) " "; font-weight: 700; }
+.stepper li.done { color: var(--ink); }
+.stepper li.now { background: var(--accent); color: var(--accent-ink); }
+.wizcard { border: 2px solid var(--accent); border-radius: var(--radius); padding: 14px; }
+.wizcard h4 { margin: 0 0 6px; font-size: 17px; color: var(--heading); }
+.wizcard p { margin: 0 0 10px; font-size: 14px; line-height: 1.5; }
+.wizcard .row { margin-top: 8px; }
+.wizcard .btn.big { font-size: 15px; padding: 10px 16px; }
+.wizcard.moving { border-color: var(--line); }
+.drawlog { margin-top: 12px; font-size: 13px; }
+.drawlog summary { cursor: pointer; color: var(--muted); }

@@ -122,37 +122,38 @@
     </div>
 
     <div class="tabpane" id="tab-draw" hidden>
-      <h3>Draw with a pen <small>runs the framework's tested drawing procedure</small></h3>
-      <ol class="steps muted">
-        <li>Tape paper down 22–34 cm in front of the robot; a felt-tip pen, cap off. Speed doesn't matter here.</li>
-        <li><b>Start drawing</b> – the dashboard parks and hands the arm to the drawing procedure.</li>
-        <li><b>Load</b>: lay the pen ACROSS the jaws like a cigarette, tip out 5–7 cm → <b>go</b>; tug-test → <b>go</b>.</li>
-        <li><b>Tilt</b>: does the tip point straight down? <b>go</b> / <b>roll ±10</b> / <b>flip</b>.</li>
-        <li><b>Height</b>: type how high the tip is above the paper (mm), then jog <b>down</b> until it just <b>touch</b>es.</li>
-        <li><b>Draw</b>: <b>Level paper</b> once, then pick a shape. <b>Finish</b> hands the pen back.</li>
-      </ol>
-      <div class="row wrap">
-        <button class="btn primary task-start" data-task="draw">Start drawing</button>
+      <h3>Draw with a pen <small>step by step – the robot holds a pen and draws on an A4 sheet</small></h3>
+
+      <div id="drawSetup">
+        <div class="drawsetup">
+          <svg viewBox="0 0 220 250" class="a4map" role="img" aria-label="Where to put the A4 sheet">
+            <rect x="15" y="12" width="190" height="134" rx="2" class="sheet"/>
+            <text x="110" y="30" class="lbl">A4 sheet, landscape (29.7 × 21 cm)</text>
+            <line x1="15" y1="155" x2="205" y2="155" class="dim"/><text x="110" y="166" class="lbl">centred left–right</text>
+            <circle cx="110" cy="72" r="16" class="draw"/><circle cx="110" cy="72" r="2.5" class="dot"/>
+            <text x="110" y="100" class="lbl">drawing spot</text>
+            <line x1="200" y1="72" x2="200" y2="232" class="dim"/><text x="196" y="190" class="lbl r">28 cm</text>
+            <line x1="22" y1="146" x2="22" y2="232" class="dim"/><text x="27" y="200" class="lbl l">≈17 cm</text>
+            <rect x="85" y="210" width="50" height="34" rx="6" class="base"/><text x="110" y="231" class="lbl">ROBOT</text>
+            <path d="M110 206 L110 182" class="arrow"/><text x="116" y="190" class="lbl l">front</text>
+          </svg>
+          <ol class="steps">
+            <li>Tape an <b>A4 sheet</b> down <b>sideways (landscape)</b>, centred in front of the robot, its near edge
+              <b>about 17 cm</b> from the base (the drawing spot is 28 cm out).</li>
+            <li>Have a <b>felt-tip pen</b> ready, cap off.</li>
+            <li>Speed doesn't matter – drawing uses its own slow, careful speed.</li>
+            <li>Press <b>Start drawing</b>. The robot parks, then opens its gripper for the pen.</li>
+          </ol>
+        </div>
+        <button class="btn primary task-start" data-task="draw">✎ Start drawing</button>
       </div>
-      <div class="session"></div>
-      <div class="drawpad">
-        <div><span class="k">pen</span>
-          <button class="btn ans" data-a="go">go</button><button class="btn ans" data-a="no">no</button>
-          <button class="btn ans" data-a="roll -10">roll −10</button><button class="btn ans" data-a="roll 10">roll +10</button>
-          <button class="btn ans" data-a="flip">flip</button></div>
-        <div><span class="k">height</span>
-          <button class="btn ans" data-a="down 5">down 5</button><button class="btn ans" data-a="down 3">down 3</button>
-          <button class="btn ans" data-a="down">down 1</button><button class="btn ans" data-a="up">up 1</button>
-          <button class="btn ans" data-a="up 5">up 5</button><button class="btn primary ans" data-a="touch">touch</button></div>
-        <div><span class="k">shape</span>
-          <button class="btn shape" data-s="square">□ square</button><button class="btn shape" data-s="circle">○ circle</button>
-          <button class="btn shape" data-s="star">☆ star</button><button class="btn shape" data-s="spiral">@ spiral</button>
-          <button class="btn shape" data-s="smiley">☺ smiley</button><button class="btn shape" data-s="house">⌂ house</button></div>
-        <div class="slider"><label for="drawSize">Size</label><div class="track"><input type="range" id="drawSize" min="20" max="60" step="5" value="40"></div><output>40 mm</output></div>
-        <div><button class="btn" id="drawLevel">Level paper</button>
-          <button class="btn ans" data-a="probe">Re-measure height</button>
-          <button class="btn warn ans" data-a="quit">Finish</button></div>
+
+      <div id="drawWizard" hidden>
+        <ol class="stepper" id="drawStepper"></ol>
+        <div class="wizcard" id="drawCard"></div>
       </div>
+
+      <details class="drawlog"><summary>Details (what the drawing program says)</summary><div class="session"></div></details>
     </div>
 
     <div class="tabpane" id="tab-motions" hidden>

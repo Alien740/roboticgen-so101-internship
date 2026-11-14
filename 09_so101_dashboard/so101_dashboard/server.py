@@ -92,6 +92,11 @@ class App:
             c.disconnect()
         elif name == "estop":
             c.emergency_stop()
+            if self.tasks.running():          # a framework procedure owns the arm: stop it too
+                try:
+                    self.tasks.stop()
+                except Exception:
+                    pass
         elif name == "reset":
             c.reset_estop()
         elif name == "speed":

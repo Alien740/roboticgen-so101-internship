@@ -48,7 +48,7 @@ function renderSession() {
     const pre = el.querySelector(".console"); if (pre) pre.scrollTop = pre.scrollHeight;
   });
   $$(".task-start").forEach(b => (b.disabled = live));
-  $$(".drawpad button, .drawpad input").forEach(b => (b.disabled = !waiting || (TASK.task || [])[0] !== "draw"));
+  renderDraw();
 }
 
 async function answer(text) {
@@ -66,13 +66,103 @@ document.addEventListener("click", e => {
     const inp = b.parentElement.querySelector(".sess-text"); answer(inp.value); inp.value = "";
   } else if (b.classList.contains("sess-stop")) api("task", { op: "stop" }).catch(() => {}).finally(() => setTimeout(pollTask, 300));
   else if (b.classList.contains("shape")) answer(`draw ${b.dataset.s} ${$("#drawSize").value}`);
+  else if (b.classList.contains("draw-level")) answer(`level ${$("#drawSize").value}`);
   else if (b.classList.contains("task-start")) startTask(b);
 });
 document.addEventListener("keydown", e => {
   if (e.key === "Enter" && e.target.classList?.contains("sess-text")) { answer(e.target.value); e.target.value = ""; }
 });
-$("#drawLevel").onclick = () => answer(`level ${$("#drawSize").value}`);
-$("#drawSize").oninput = e => (e.target.closest(".slider").querySelector("output").textContent = `${e.target.value} mm`);
+document.addEventListener("input", e => {
+  if (e.target.id === "drawSize") { drawSize = +e.target.value; e.target.closest(".slider").querySelector("output").textContent = `${drawSize} mm`; }
+});
+
+// ------------------------------------------------------------------ Draw: one step at a time
+// The drawing program (framework so101 draw) asks questions; each prompt is mapped to a step with
+// plain instructions and only the buttons that make sense there. Answers are the program's own words.
+const DRAW_STEPS = ["Set up", "Pen in", "Grip", "Straight down", "Height", "Touch paper", "Draw", "Pen back"];
+let drawSize = 40, drawLeveled = false;
+const B = (a, label, cls = "") => `<button class="btn ${cls} ans" data-a="${escapeHtml(a)}">${label}</button>`;
+
+function drawStep(prompt) {
+  const p = (prompt || "").toLowerCase();
+  if (p.includes("across the jaws")) return [1, "Put the pen in the gripper",
+    `<p>The gripper is open. Lay the pen <b>across the jaws, like a cigarette</b> – deep between the pads, with the
+      <b>tip sticking out 5–7 cm</b>. Hold it there, then press the button: the gripper closes on it.</p>`,
+    B("go", "✓ Pen is in – grip it", "primary big") + B("roll -10", "turn gripper ↺") + B("roll 10", "turn gripper ↻")];
+  if (p.includes("pen gripped")) return [2, "Check the grip",
+    `<p>Let go of the pen and give it a gentle tug. It should not slip.</p>`,
+    B("go", "✓ It's firm", "primary big")];
+  if (p.includes("straight down") && p.includes("now")) return [3, "Straight down now?",
+    `<p>Look at the pen from the front and from the side.</p>`,
+    B("go", "✓ Yes, straight down", "primary big") + B("roll -10", "turn ↺ 10°") + B("roll 10", "turn ↻ 10°") + B("roll -3", "↺ 3°") + B("roll 3", "↻ 3°")];
+  if (p.includes("straight down")) return [3, "Is the pen pointing straight down?",
+    `<p>The pen is now over the drawing spot. Check that the <b>tip</b> (not the cap end) points
+      <b>straight down</b> at the paper – look from the front and from the side.</p>`,
+    B("go", "✓ Yes, straight down", "primary big") + B("roll -10", "turn ↺ 10°") + B("roll 10", "turn ↻ 10°")
+      + B("flip", "The cap end is down – flip it")];
+  if (p.includes("gripper opens so you can turn")) return [3, "Flip the pen (1/3)",
+    `<p>Hold the pen with your fingers, then press the button – the gripper will open.</p>`, B("go", "✓ I'm holding it", "primary big")];
+  if (p.includes("put the pen back")) return [3, "Flip the pen (2/3)",
+    `<p>Turn the pen around so the <b>tip</b> is on the other side, put it back across the jaws, then press the button.</p>`,
+    B("go", "✓ Pen is back – grip it", "primary big")];
+  if (p.includes("let go of the pen")) return [3, "Flip the pen (3/3)",
+    `<p>Let go of the pen.</p>`, B("go", "✓ Done", "primary big")];
+  if (p.includes("how high")) return [4, "How high is the tip above the paper?",
+    `<p>Measure with a ruler (or estimate) the gap between the <b>pen tip</b> and the paper. A rough number is fine –
+      next you lower it the last bit by hand.</p>`,
+    [40, 60, 80, 100, 120].map(v => B(String(v), `${v} mm`, v === 80 ? "primary" : "")).join("")
+      + `<input class="btn sess-text" placeholder="or type mm" style="width:110px"><button class="btn sess-send">Send</button>`];
+  if (p.includes("'touch'")) return [5, drawLeveled ? "Touch the paper (corner)" : "Lower the pen until it just touches",
+    `<p>Lower the pen in small steps. Stop when the tip <b>just touches</b> the paper (it may bend very slightly),
+      then press <b>Touching now</b>.</p>`,
+    B("down 5", "↓ 5 mm") + B("down 3", "↓ 3 mm") + B("down", "↓ 1 mm") + B("up", "↑ 1 mm") + B("up 5", "↑ 5 mm")
+      + B("touch", "✓ Touching now", "primary big")];
+  if (p.includes("'draw <shape>")) return [6, "Ready to draw",
+    `<p>${drawLeveled ? "Pick a shape." : "First press <b>Level paper</b> once: the pen touches 3 corners so it follows the paper even if the table is not flat. Then pick a shape."}</p>
+     <div class="slider"><label for="drawSize">Size</label><div class="track"><input type="range" id="drawSize" min="20" max="60" step="5" value="${drawSize}"></div><output>${drawSize} mm</output></div>
+     <div class="row wrap"><button class="btn ${drawLeveled ? "" : "primary"} draw-level">⌖ Level paper</button></div>`,
+    [["circle", "○ Circle"], ["square", "□ Square"], ["star", "☆ Star"], ["smiley", "☺ Smiley"], ["house", "⌂ House"], ["spiral", "@ Spiral"]]
+      .map(([k, l]) => `<button class="btn shape ${k === "circle" && drawLeveled ? "primary" : ""}" data-s="${k}">${l}</button>`).join("")
+      + B("quit", "Finish – give the pen back", "warn")];
+  if (p.includes("release it")) return [7, "Take the pen back",
+    `<p>Hold the pen, then press the button – the gripper opens.</p>`, B("go", "✓ I'm holding it", "primary big")];
+  return null;
+}
+
+function renderDraw() {
+  const t = TASK || {};
+  const mine = (t.task || [])[0] === "draw";
+  const live = ["starting", "running", "waiting"].includes(t.state) && (mine || t.state === "starting");
+  $("#drawSetup").hidden = live;
+  $("#drawWizard").hidden = !live;
+  if (!live) { drawLeveled = false; return; }
+  if ((t.events || []).some(e => e.type === "plane")) drawLeveled = true;
+  const st = t.state === "waiting" ? drawStep(t.prompt) : null;
+  let idx, html;
+  if (st) {
+    const [i, title, body, buttons] = st;
+    idx = i;
+    html = `<h4>${title}</h4>${body}<div class="row wrap">${buttons}</div>`;
+  } else {
+    idx = Math.max(1, ...[...$$("#drawStepper li.now")].map(li => +li.dataset.i));
+    const lastEv = (t.events || []).slice(-1)[0];
+    const what = t.state === "starting" ? "Parking the arm and starting the drawing program…"
+      : lastEv && lastEv.type === "stroke_done" ? `Drawing… stroke ${lastEv.index} of ${lastEv.of}`
+      : t.state === "waiting" ? escapeHtml(t.prompt || "") : "The robot is moving – keep your hands clear.";
+    html = `<h4>${t.state === "waiting" ? "Answer below" : "Please wait"}</h4><p>${what}</p>`
+      + (t.state === "waiting" ? `<div class="row wrap">${B("go", "go", "primary")}<input class="btn sess-text" placeholder="answer"><button class="btn sess-send">Send</button></div>` : "");
+  }
+  html += `<div class="row"><button class="btn warn sess-stop">■ Stop</button></div>`;
+  $("#drawStepper").innerHTML = DRAW_STEPS.map((n, i) =>
+    `<li data-i="${i}" class="${i < idx ? "done" : i === idx ? "now" : ""}">${n}</li>`).join("");
+  const card = $("#drawCard");
+  if (card.dataset.html !== html) {
+    const typed = card.querySelector(".sess-text")?.value || "";
+    card.dataset.html = html; card.innerHTML = html;
+    const inp = card.querySelector(".sess-text"); if (inp) inp.value = typed;
+  }
+  card.classList.toggle("moving", !st);
+}
 
 async function startTask(b) {
   const task = b.dataset.task, options = {};
