@@ -171,7 +171,7 @@ function drawStep(prompt) {
        <p class="muted">The top of the box is away from the robot.</p></div>`,
     [["circle", "○ Circle"], ["square", "□ Square"], ["star", "☆ Star"], ["smiley", "☺ Smiley"], ["house", "⌂ House"], ["spiral", "@ Spiral"]]
       .map(([k, l]) => `<button class="btn shape" data-s="${k}">${l}</button>`).join("")
-      + `<button class="btn draw-level">⌖ Level paper</button>` + B("place", "Place again") + B("quit", "Finish – give the pen back", "warn")];
+      + `<button class="btn draw-level">⌖ Level paper</button>` + B("aside", "Move aside – see the paper") + B("place", "Place again") + B("quit", "Finish – give the pen back", "warn")];
   if (p.includes("release it")) return [5, "Take the pen back",
     `<p>Hold the pen, then press the button – the gripper opens.</p>`, B("go", "✓ I'm holding it", "primary big")];
   return null;

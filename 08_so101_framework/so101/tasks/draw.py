@@ -565,6 +565,8 @@ class Drawer:
                 # (A joint-space move between two lifted poses swings in an arc and can dip the tip
                 # onto the paper on the way: that drew streaks between strokes.)
                 up = ups[k - 1] if k else self.d["lift"]
+                if k == 0:                                      # from wherever the arm is (e.g. 'aside'): high, then down
+                    self.goto((*pts[0], plane_z(self.coef, pts[0]) + up + 0.03), duration=2.5, tip=True)
                 self.line((*pts[0], plane_z(self.coef, pts[0]) + up), speed=self.d.get("travel_speed", 0.03), tip=True)
                 self.line(path[0], speed=0.008, tip=True)
                 self.arm.stream(traj, self.d["rate_hz"], check=self.sess.check_stop)
@@ -603,9 +605,9 @@ def main(a, prof, sess):
             except RuntimeError as e:                              # stay at the menu instead of crashing
                 sess.event("error", message=str(e)); sess.say(f"ERROR {e}")
             c = sess.ask("'draw <shape> <size_mm>' (" + " ".join(SHAPES) + "), 'drawfile <name> [size_mm]', 'level <size_mm>', "
-                         "'press <mm>', 'speed <mm/s>', 'move <away_mm> <left_mm>', 'place', 'probe', 'quit'",
+                         "'press <mm>', 'speed <mm/s>', 'move <away_mm> <left_mm>', 'place', 'probe', 'aside' (arm out of the camera's view), 'quit'",
                          ["draw <shape> <size_mm>", "drawfile <name>", "level 60", "press <mm>", "speed <mm/s>",
-                          "move <away> <left>", "place", "probe", "quit"]).split()
+                          "move <away> <left>", "place", "probe", "aside", "quit"]).split()
             if not c:
                 continue
             try:
@@ -629,6 +631,9 @@ def main(a, prof, sess):
                     dr.center = new; sess.say(f"centre ({new[0]*1000:.0f}, {new[1]*1000:.0f}) mm - 'probe' re-measures here")
                 elif c[0] == "probe":
                     dr.touch_off()
+                elif c[0] == "aside":                           # out of the overhead camera's view, pen kept
+                    dr.lift_clear()
+                    arm.park(keep_roll=True)
                 else:
                     sess.say("unknown command")
             except Stopped:
