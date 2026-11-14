@@ -259,12 +259,8 @@ class Drawer:
             tool_z = float(T[2, 3])
             pen_dir = T[:3, :3].T @ DOWN                          # this pose = pen straight down
             center = np.array(T[:2, 3], float)
-            try:
-                K.pen_ik((*center, tool_z + 0.04), arm.angles(), pen_dir, roll_limits=self.roll_lim)
-            except Exception:
-                self.sess.say("the pen can't stay straight down there - place it a little closer to or further "
-                              "from the robot (about 24-33 cm from the base), then try again")
-                continue
+            # (no reachability gate here: the person just put the arm in this pose. A shape that can't be
+            # drawn there fails when it is planned - before the pen goes down - and says why.)
             break
         paper_z = tool_z - PEN_NOMINAL                            # tip height at the placed point
         self.pen_dir, self.center, self.length = pen_dir, center, PEN_NOMINAL
