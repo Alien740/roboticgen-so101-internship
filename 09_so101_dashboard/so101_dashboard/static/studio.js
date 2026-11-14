@@ -91,6 +91,13 @@ $$("#picMode button").forEach(b => (b.onclick = () => {
 }));
 $("#picDetail").oninput = () => vectorizeSoon(350);
 $("#picSize").oninput = () => { $("#picSizeOut").textContent = `${$("#picSize").value} mm`; PLAN = null; vectorizeSoon(350); };
+const fill = () => $("#picFill").checked;
+const sizeNow = () => (fill() ? (PLAN && PLAN.size_mm) || 160 : +$("#picSize").value);
+$("#picFill").onchange = () => {
+  $("#picSize").disabled = fill();
+  $("#picSizeOut").textContent = fill() ? "auto" : `${$("#picSize").value} mm`;
+  PLAN = null; vectorizeSoon(0);
+};
 $("#picShowImg").onchange = () => paintPic();
 $$("#picSpeed button").forEach(b => (b.onclick = () => {
   $$("#picSpeed button").forEach(x => x.classList.toggle("on", x === b)); if (SIM) SIM.x = +b.dataset.x;
@@ -102,14 +109,14 @@ function vectorizeSoon(ms) {
   vecTimer = setTimeout(async () => {
     $("#picStats").textContent = "finding the lines…";
     try {
-      VEC = await api("vectorize", { image: PIC, mode: picMode, detail: +$("#picDetail").value, size_mm: +$("#picSize").value });
+      VEC = await api("vectorize", { image: PIC, mode: picMode, detail: +$("#picDetail").value, size_mm: sizeNow() });
     } catch (_) { $("#picStats").textContent = ""; return; }
     PLAN = null; stopSim(); clearOverlays();
     $("#picView").hidden = false;
     paintPic();
     const st = VEC.stats, mmss = s => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}`;
     $("#picStats").innerHTML = `<b>${st.strokes}</b> strokes · <b>${st.ink_mm}</b> mm of ink · ${st.travel_mm} mm pen-up travel · `
-      + `about <b>${mmss(st.est_s)}</b> to draw at ${$("#picSize").value} mm`
+      + `about <b>${mmss(st.est_s)}</b> to draw at ${sizeNow()} mm` + (fill() ? " (the size is set to fill the sheet when planned)" : "")
       + (st.strokes > 120 ? ` <span class="bad">– a lot of strokes: less detail or "Sketch" is quicker</span>` : "");
     $("#picNote").textContent = "Simulate first to check every stroke is reachable – the robot plans it exactly as it will draw.";
   }, ms);
@@ -134,8 +141,9 @@ function paintPic() {
 
 // ------------------------------------------------------------------ 3D dry run
 let SIM = null;
-const INK = [0.01, 0.12, 0.29], PLANNED = [0.55, 0.78, 0.86], PAPER = [0.85, 0.65, 0.1], PEN = [0.99, 0.72, 0.07];
-function clearOverlays() { if (twin) ["plan", "ink", "paper", "pen"].forEach(n => twin.setOverlay(n, null)); }
+const INK = [0.01, 0.12, 0.29], PLANNED = [0.55, 0.78, 0.86], PAPER = [0.92, 0.92, 0.92], AREA = [0.85, 0.65, 0.1], PEN = [0.99, 0.72, 0.07];
+function clearOverlays() { if (twin) ["plan", "ink", "paper", "area", "pen"].forEach(n => twin.setOverlay(n, null)); }
+function showSheet(p) { twin.setOverlay("paper", p.paper, PAPER); twin.setOverlay("area", p.areaLines, AREA); twin.setOverlay("plan", p.segs, PLANNED); }
 // the pen (not in the 3D model): a vertical bundle of lines from the tip up, drawn thick
 function penAt(x, y, z) {
   const out = [], L = 0.11;
@@ -159,11 +167,9 @@ function prepPlan(p) {
     if (a[1] && b[1] && a[5] === b[5]) { segs.push(a[2], a[3], a[4] + 0.0006, b[2], b[3], b[4] + 0.0006); segT.push(b[0]); }
   }
   p.segs = segs; p.segT = segT;
-  // the drawing area on the paper, square, turned toward the base like the drawing
-  const [cx, cy] = p.center, h = (p.size_mm / 2 + 12) / 1000, a = Math.atan2(cy, cx), z = p.paper_z + 0.0003;
-  const corner = (u, v) => [cx + v * Math.cos(a) - u * Math.sin(a), cy + v * Math.sin(a) + u * Math.cos(a), z];
-  const C = [corner(-h, -h), corner(h, -h), corner(h, h), corner(-h, h)];
-  p.paper = C.flatMap((q, i) => [...q, ...C[(i + 1) % 4]]);
+  // the A4 sheet and the drawing's area, as the server placed them (lifted a little above the paper)
+  const loop = C => C.flatMap((q, i) => [q[0], q[1], q[2] + 0.0003, C[(i + 1) % 4][0], C[(i + 1) % 4][1], C[(i + 1) % 4][2] + 0.0003]);
+  p.paper = loop(p.sheet); p.areaLines = loop(p.area);
   return p;
 }
 function inkUntil(p, t) {
@@ -196,9 +202,13 @@ function hud(html, real) {
 async function getPlan() {
   if (PLAN) return PLAN;
   $("#picNote").textContent = "Planning every stroke the way the robot will move (a few seconds)…";
-  const r = await api("draw_plan", { strokes: VEC.uv, size_mm: +$("#picSize").value });
+  $("#picNote").textContent = fill() ? "Finding the biggest size that fits the sheet with the pen upright, then planning every stroke (≈10 s)…"
+    : "Planning every stroke the way the robot will move (a few seconds)…";
+  const r = await api("draw_plan", { strokes: VEC.uv, size_mm: +$("#picSize").value, fill: fill() });
   PLAN = prepPlan(r.plan);
-  $("#picNote").innerHTML = (PLAN.ok ? `✓ Every stroke is reachable – about <b>${mmss(PLAN.seconds)}</b> of drawing.`
+  if (fill()) $("#picSizeOut").textContent = `${PLAN.drawn_mm[0]} × ${PLAN.drawn_mm[1]} mm`;
+  $("#picNote").innerHTML = `Drawing <b>${PLAN.drawn_mm[0]} × ${PLAN.drawn_mm[1]} mm</b> on the A4 sheet. `
+    + (PLAN.ok ? `✓ Every stroke is reachable – about <b>${mmss(PLAN.seconds)}</b> of drawing.`
     : `<span class="bad">✗ ${escapeHtml(PLAN.error)}</span> – make it smaller, or place the pen nearer the middle of the reach.`)
     + (PLAN.placed ? " Planned at the spot where you last placed the pen." : " (Planned at the default spot – after you place the pen by hand, it uses that spot.)");
   return PLAN;
@@ -213,8 +223,7 @@ async function simulate() {
   window.SIM_LOCK = true;
   $("#twinMsg").textContent = "";
   twin.focus([p.center[0], p.center[1], p.paper_z + 0.05], 0.55);
-  twin.setOverlay("paper", p.paper, PAPER);
-  twin.setOverlay("plan", p.segs, PLANNED);
+  showSheet(p);
   SIM = { t0: performance.now(), t: 0, x: +$("#picSpeed button.on").dataset.x, last: performance.now() };
   $("#picSim").textContent = "■ Stop simulation";
   const step = now => {
@@ -247,9 +256,13 @@ $("#picSim").onclick = simulate;
 // ------------------------------------------------------------------ draw it for real
 const atMenu = t => t && t.state === "waiting" && (t.task || [])[0] === "draw" && (t.prompt || "").includes("'draw <shape>");
 async function sendDrawing() {
-  const size = +$("#picSize").value;
-  await api("save_drawing", { name: "picture", strokes: VEC.uv, size_mm: size });
-  answer(`drawfile picture ${size}`);
+  PENDING = false;
+  PLAN = null;                                     // plan again: the pen was just placed (new spot, paper map)
+  const p = await getPlan();
+  if (!p.ok) { toast("Not drawing: " + p.error); return; }
+  await api("save_drawing", { name: "picture", strokes: VEC.uv, size_mm: p.size_mm, offset_mm: p.offset_mm });
+  if (twin) { showSheet(p); twin.setOverlay("ink", null); }
+  answer(`drawfile picture ${p.size_mm}`);
   PENDING = false;
   toast("Drawing the picture – watch the cameras");
 }
@@ -285,7 +298,6 @@ setInterval(() => {
   for (const e of fresh) {
     if (e.type === "drawing") {
       drawingPicture = e.shape === "picture"; drawT0 = Date.now(); PROG = { done: 0, cur: -1 };
-      if (drawingPicture) { PLAN = null; getPlan().catch(() => {}); }   // re-plan at the spot the pen was just placed
     }
     else if (e.type === "drawn") drawingPicture = false;
     else if (e.type === "stroke_start" || e.type === "stroke_done") st = e;
@@ -297,7 +309,7 @@ setInterval(() => {
     paintPic();
     if (PLAN && twin) {                              // ink so far, from the plan: the finished strokes
       const tEnd = PLAN.tips.filter(p => p[5] < PROG.done).reduce((m, p) => Math.max(m, p[0]), 0);
-      twin.setOverlay("paper", PLAN.paper, PAPER); twin.setOverlay("plan", PLAN.segs, PLANNED);
+      showSheet(PLAN);
       twin.setOverlay("ink", inkUntil(PLAN, tEnd), INK);
     }
   }

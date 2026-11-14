@@ -88,8 +88,8 @@ drawing:
                                # A vertical pen is only reachable ~24-33 cm out (any direction). Default [0.28, 0.0]
   band_x: [0.27, 0.29]
   band_y: [-0.06, 0.06]
-  max_size_mm: 120              # hand-placed pen at the A4 sheet reaches a ~210 mm square (pen lean <16 deg); was 60
-  press: 0.0015                # m past the touched height (2.5 mm pushed a weakly gripped pen sideways)
+  max_size_mm: 270              # the dashboard's 'fill the sheet' keeps it where the pen is upright; was 120
+  press: 0.002                 # m past the touched height (paper map from 5 touches; 2.5 mm pushed a weakly gripped pen sideways)
   speed: 0.010                 # m/s (12 rounded corners off with a loosely held pen)
   rate_hz: 30                  # command rate (2 mm waypoints held 0.17 s each caused "shivering")
   lift: 0.025                  # pen-up height between strokes (15 mm let a sliding pen touch)

@@ -187,7 +187,8 @@
             <button data-m="shade" title="Sketch + hatching where the picture is dark (takes longer)">Shaded</button>
           </div>
           <label class="mini">Detail <input type="range" id="picDetail" min="0" max="1" step="0.05" value="0.5"></label>
-          <label class="mini">Size <input type="range" id="picSize" min="40" max="120" step="10" value="100"> <output id="picSizeOut">100 mm</output></label>
+          <label class="toggle small" title="As big as the sheet allows while the pen stays upright"><input type="checkbox" id="picFill" checked> <span>Fill the sheet</span></label>
+          <label class="mini">Size <input type="range" id="picSize" min="40" max="270" step="10" value="120" disabled> <output id="picSizeOut">auto</output></label>
         </div>
         <div class="pic-view" id="picView" hidden>
           <canvas id="picCanvas" width="600" height="420"></canvas>

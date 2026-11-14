@@ -47,19 +47,48 @@ def _frames(angles):
     return {n: [round(float(x), 4) for x in T.T.ravel()] for n, T in F.items()}
 
 
+_LEAN = {}
+
+
+def lean_map(prof):
+    """The sheet's pen-lean map, for the current hand placement (a few seconds: cached)."""
+    m = prof.get("measured", {}).get("pen") or {}
+    key = (str(m.get("at")), tuple(m.get("center") or ()))
+    if key not in _LEAN:
+        _LEAN.clear()
+        _LEAN[key] = D.lean_map(prof)
+    return _LEAN[key]
+
+
+def _outline(ps, du, dv, hu, hv):
+    """Rectangle in the drawing frame (centre du, dv; half sizes, mm) -> base-frame corners on the paper."""
+    pts = D.to_base([[(du - hu, dv - hv), (du + hu, dv - hv), (du + hu, dv + hv), (du - hu, dv + hv)]], ps["center"])[0]
+    return [[round(x, 4), round(y, 4), round(D.plane_z(ps["plane"], (x, y)), 4)] for x, y in pts]
+
+
 def plan(prof_name, body):
     prof = profile.load(prof_name)                                # fresh: picks up the last hand placement
-    size = min(float(body.get("size_mm", 100)), prof["drawing"]["max_size_mm"])
     strokes = [st for st in body["strokes"] if len(st) >= 2]
     if not strokes or sum(map(len, strokes)) > 20000:
         raise ValueError("nothing to plan (or over 20000 points)")
-    sim = D.simulate(prof, D.fit_strokes(strokes, size))
+    if body.get("fill"):                                          # biggest size where the pen is upright
+        size, (du, dv) = D.fit_sheet(strokes, lean_map(prof), prof["drawing"]["max_size_mm"])
+    else:
+        size, du, dv = min(float(body.get("size_mm", 100)), prof["drawing"]["max_size_mm"]), 0.0, 0.0
+    mm = [[(u + du, v + dv) for u, v in st] for st in D.fit_strokes(strokes, size)]
+    sim = D.simulate(prof, mm)
     fr = sim["frames"]
     keep = range(len(fr)) if len(fr) <= MAX_KEYFRAMES else \
         sorted({round(i * (len(fr) - 1) / (MAX_KEYFRAMES - 1)) for i in range(MAX_KEYFRAMES)})
     ps = D.pen_setup(prof)
+    pts = [p for st in mm for p in st]
+    us, vs = [p[0] for p in pts], [p[1] for p in pts]
+    W, H = D.A4_LANDSCAPE_MM
     return {
-        "ok": sim["ok"], "error": sim["error"], "size_mm": size,
+        "ok": sim["ok"], "error": sim["error"], "size_mm": size, "offset_mm": [du, dv],
+        "drawn_mm": [round(max(us) - min(us)), round(max(vs) - min(vs))],
+        "sheet": _outline(ps, 0.0, 0.0, W / 2, H / 2),
+        "area": _outline(ps, (max(us) + min(us)) / 2, (max(vs) + min(vs)) / 2, (max(us) - min(us)) / 2 + 3, (max(vs) - min(vs)) / 2 + 3),
         "placed": ps["placed"], "center": [round(float(v), 4) for v in ps["center"]],
         "paper_z": ps["paper_z"], "seconds": round(fr[-1][0]) if fr else 0,
         # every planned tip point (for the ink lines) and a decimated keyframe track (for the twin)

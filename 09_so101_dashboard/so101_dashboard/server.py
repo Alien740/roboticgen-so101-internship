@@ -159,7 +159,8 @@ class App:
             name_ = self._rec_name(body.get("name") or "sketch")
             d = self.prof.run_dir / "drawings"
             d.mkdir(parents=True, exist_ok=True)
-            out = {"strokes": strokes, **({"size_mm": float(body["size_mm"])} if body.get("size_mm") else {})}
+            out = {"strokes": strokes, **({"size_mm": float(body["size_mm"])} if body.get("size_mm") else {}),
+                   **({"offset_mm": [float(v) for v in body["offset_mm"]]} if body.get("offset_mm") else {})}
             (d / f"{name_}.json").write_text(json.dumps(out))
             return {"ok": True, "name": name_}
         elif name == "vectorize":

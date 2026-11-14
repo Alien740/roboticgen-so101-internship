@@ -94,7 +94,18 @@ def fit_plane(samples):
 
 
 def plane_z(coef, xy):
-    return coef[0] * xy[0] + coef[1] * xy[1] + coef[2]
+    z = coef[0] * xy[0] + coef[1] * xy[1] + coef[2]
+    return z + coef[3] * xy[0] * xy[1] if len(coef) > 3 else z
+
+
+def fit_surface(samples):
+    """Paper height from touches: bilinear with 5+ touches (the arm's own height error is not flat
+    over a whole sheet), a plane with 3-4, a level sheet with fewer."""
+    P = np.array(samples, float)
+    if len(P) < 3:
+        return [0.0, 0.0, float(P[:, 2].mean())]
+    cols = [P[:, 0], P[:, 1], np.ones(len(P))] + ([P[:, 0] * P[:, 1]] if len(P) >= 5 else [])
+    return np.linalg.lstsq(np.c_[tuple(cols)], P[:, 2], rcond=None)[0].tolist()
 
 
 # ------------------------------------------------------------------ dry run (no arm)
@@ -106,6 +117,7 @@ def pen_setup(prof):
     return {"pen_dir": pen_dir / np.linalg.norm(pen_dir),
             "center": np.array(m.get("center") or prof["drawing"]["center"], float),
             "paper_z": float(m.get("paper_z", 0.0)), "length": float(m.get("length", PEN_NOMINAL)),
+            "plane": m.get("plane") or [0.0, 0.0, float(m.get("paper_z", 0.0))],
             "angles": m.get("angles"), "placed": "center" in m}
 
 
@@ -136,6 +148,51 @@ def _search_pose(xyz, pen_dir, length):
     return best[0]
 
 
+A4_LANDSCAPE_MM = (297.0, 210.0)       # u across (long side), v away from the robot
+
+
+def lean_map(prof, step_mm=15.0, sheet_mm=A4_LANDSCAPE_MM, margin_mm=12.0):
+    """Pen lean (deg) on a grid over the sheet, centred on the hand-placed spot, in the drawing frame
+    (u left, v away). 90 = unreachable. Near the base the wrist reaches its stop and the pen leans:
+    with the pen length only guessed, a lean moves the tip sideways, so drawings stay where it doesn't."""
+    ps = pen_setup(prof)
+    c, coef = ps["center"], ps["plane"]
+    a = math.atan2(c[1], c[0])
+    seed = {k: float(v) for k, v in (ps["angles"] or prof["poses"]["home"]).items() if k in K.J5}
+    hu, hv = sheet_mm[0] / 2 - margin_mm, sheet_mm[1] / 2 - margin_mm
+    us, vs = np.arange(-hu, hu + 1e-6, step_mm), np.arange(-hv, hv + 1e-6, step_mm)
+    if not ps["angles"]:
+        seed = _search_pose((*c, plane_z(coef, c)), ps["pen_dir"], ps["length"])
+    lean = np.full((len(vs), len(us)), 90.0)
+    for i, v in enumerate(vs):
+        for j, u in enumerate(us):
+            x, y = c[0] + (v * math.cos(a) - u * math.sin(a)) / 1000, c[1] + (v * math.sin(a) + u * math.cos(a)) / 1000
+            A, err, vert = K.pen_ik_local((x, y, plane_z(coef, (x, y))), seed, ps["pen_dir"], length=ps["length"])
+            if err < 0.002:
+                lean[i, j] = math.degrees(math.acos(min(1.0, vert)))
+    return {"u": us, "v": vs, "lean": lean, "half": (hu, hv)}
+
+
+def fit_sheet(strokes_mm, lm, max_size_mm, max_lean_deg=6.0):
+    """Largest size (and the shift toward/away from the robot) at which the drawing stays on the sheet
+    and where the pen is upright. strokes_mm: any scale, u/v frame. Returns (size_mm, (du, dv))."""
+    pts = np.array([p for st in strokes_mm for p in st], float)
+    w, h = np.ptp(pts[:, 0]), np.ptp(pts[:, 1])
+    U, V = np.meshgrid(lm["u"], lm["v"])
+    ok = lm["lean"] <= max_lean_deg
+    hu, hv = lm["half"]
+    for size in np.arange(max_size_mm, 39.0, -5.0):
+        k = size / max(w, h, 1e-9)
+        W, H = w * k, h * k
+        if W > 2 * hu + 1e-6 or H > 2 * hv + 1e-6:
+            continue
+        for dv in sorted(np.arange(-hv + H / 2, hv - H / 2 + 1e-6, 5.0), key=abs):
+            inside = (np.abs(U) <= W / 2 + 7) & (V >= dv - H / 2 - 7) & (V <= dv + H / 2 + 7)
+            if ok[inside].all():
+                return float(size), (0.0, float(dv))
+    return 40.0, (0.0, 0.0)
+
+
 def simulate(prof, strokes_mm, step_mm=4.0):
     """Plan a drawing without the arm, the way Drawer.draw_strokes moves: straight pen-up travel,
     straight down, the stroke, straight up. Returns {"frames": [(t_s, angles, pen_down, tip_xyz)],
@@ -143,7 +200,7 @@ def simulate(prof, strokes_mm, step_mm=4.0):
     can't be reached, as the real run would (before that stroke's pen goes down). The real run
     plans every 0.2 mm; a few mm is enough to show the motion and check the reach."""
     d, ps = prof["drawing"], pen_setup(prof)
-    pen_dir, L, z0 = ps["pen_dir"], ps["length"], ps["paper_z"]
+    pen_dir, L, coef = ps["pen_dir"], ps["length"], ps["plane"]
     strokes = to_base(strokes_mm, ps["center"])
     ups = travel_heights(strokes, d)
     step = step_mm / 1000
@@ -167,19 +224,20 @@ def simulate(prof, strokes_mm, step_mm=4.0):
 
     try:
         x, y = strokes[0][0]
+        z1 = plane_z(coef, (x, y)) + d["lift"]
         try:
-            A = K.pen_ik((x, y, z0 + d["lift"]), A, pen_dir, roll_limits=(lo, hi), length=L)
+            A = K.pen_ik((x, y, z1), A, pen_dir, roll_limits=(lo, hi), length=L)
         except RuntimeError:
-            A = _search_pose((x, y, z0 + d["lift"]), pen_dir, L)    # no saved hand placement: any vertical pose
+            A = _search_pose((x, y, z1), pen_dir, L)                # no saved hand placement: any vertical pose
         frames.append((0.0, A, False, [float(v) for v in tip(A)])); idx.append(0)
         for k, st in enumerate(strokes):
-            pts = [np.array((p[0], p[1], z0 - d["press"])) for p in K.dense(st, step=step)]
+            pts = [np.array((p[0], p[1], plane_z(coef, p) - d["press"])) for p in K.dense(st, step=step)]
             up = ups[k - 1] if k else d["lift"]
-            above = np.array((*st[0], z0 + up))
+            above = np.array((*st[0], plane_z(coef, st[0]) + up))
             run(K.dense([tip(A), above], step=step * 2), travel, False, k)
             run(K.dense([above, pts[0]], step=0.01), 0.008, False, k)
             run(pts, speed, True, k)
-            run(K.dense([pts[-1], np.array((*st[-1], z0 + ups[k]))], step=0.01), 0.015, False, k)
+            run(K.dense([pts[-1], np.array((*st[-1], plane_z(coef, st[-1]) + ups[k]))], step=0.01), 0.015, False, k)
         return {"frames": frames, "stroke_of_frame": idx, "ok": True, "error": ""}
     except RuntimeError as e:
         return {"frames": frames, "stroke_of_frame": idx, "ok": False,
@@ -347,7 +405,16 @@ class Drawer:
             self.sess.ask("HOLD THE ARM (the forearm), then 'go' - the arm goes limp; the gripper keeps the pen", ["go"])
             bus.disable_torque(joints)
             try:
-                self.sess.ask("move the pen by hand: tip ON the paper where the drawing should be, pen STRAIGHT DOWN; "
+                # the arm's height error is not flat over a whole sheet: touch the corners first, the centre last
+                corners = []
+                for n in range(1, 5):
+                    c = self.sess.ask(f"move the pen by hand: touch the paper near a CORNER of the sheet ({n} of 4, about "
+                                      "2 cm in from the edges), pen straight down, then 'go' ('done' skips the corners)",
+                                      ["go", "done"])
+                    if c.strip().lower() == "done":
+                        break
+                    corners.append(arm.angles())
+                self.sess.ask("now put the tip ON the paper at the CENTRE of the sheet, pen STRAIGHT DOWN; "
                               "hold it still, then 'go'", ["go"])
                 a = arm.angles()
             finally:
@@ -355,20 +422,29 @@ class Drawer:
                 bus.sync_write("Goal_Position", present)          # hold exactly here, no jump
                 bus.enable_torque(joints)
             T = K.fk(a)
-            tool_z = float(T[2, 3])
             pen_dir = T[:3, :3].T @ DOWN                          # this pose = pen straight down
+            tips = [K.pen_tip(T, pen_dir, PEN_NOMINAL)] + [K.pen_tip(K.fk(c), pen_dir, PEN_NOMINAL) for c in corners]
+            off = [n for n, t in enumerate(tips[1:], 1) if abs(t[2] - tips[0][2]) > 0.02]
+            if off:                                               # > 2 cm from the centre: not on the paper
+                self.sess.say(f"ignoring corner touch {', '.join(map(str, off))} (more than 2 cm off the centre height)")
+                tips = [t for n, t in enumerate(tips) if n not in off]
+            tool_z = float(T[2, 3])
             center = np.array(T[:2, 3], float)
             # (no reachability gate here: the person just put the arm in this pose. A shape that can't be
             # drawn there fails when it is planned - before the pen goes down - and says why.)
             break
         paper_z = tool_z - PEN_NOMINAL                            # tip height at the placed point
         self.pen_dir, self.center, self.length = pen_dir, center, PEN_NOMINAL
-        self.samples, self.coef = [(float(center[0]), float(center[1]), paper_z)], [0.0, 0.0, paper_z]
+        self.samples = [tuple(float(v) for v in t) for t in tips]
+        self.coef = fit_surface(self.samples)
         self.prof.save_measured("pen", {"pen_dir_tool": [round(float(v), 3) for v in self.pen_dir],
                                         "center": [round(float(v), 4) for v in center],
                                         "paper_z": round(paper_z, 4), "length": PEN_NOMINAL,
+                                        "plane": [round(float(v), 6) for v in self.coef],
+                                        "touches": [[round(v, 4) for v in t] for t in self.samples],
                                         "angles": {k: round(float(v), 1) for k, v in a.items()}})
-        self.sess.event("hand_placed", center_mm=[round(v * 1000) for v in center], tool_z_mm=round(tool_z * 1000, 1))
+        self.sess.event("hand_placed", center_mm=[round(v * 1000) for v in center], tool_z_mm=round(tool_z * 1000, 1),
+                        touches=len(tips), corner_heights_mm=[round((t[2] - paper_z) * 1000, 1) for t in self.samples[1:]])
         roll = a["wrist_roll"]                                    # allow the roll the person chose
         self.roll_lim = (min(self.roll_lim[0], roll - 10), max(self.roll_lim[1], roll + 10))
         self.sess.ask("got it - you can let go of the arm, then 'go' (the pen lifts off the paper)", ["go"])
@@ -384,7 +460,8 @@ class Drawer:
             raise FileNotFoundError(f"no drawing '{fname}' in {f.parent}")
         d = json.loads(f.read_text())
         size_mm = min(float(d.get("size_mm", size_mm)), self.d["max_size_mm"])
-        strokes = [P.simplify(st, 0.15) for st in fit_strokes(d["strokes"], size_mm)]   # 0.15 mm: removes jitter only
+        du, dv = d.get("offset_mm", (0.0, 0.0))                  # from the dashboard's "fill the sheet"
+        strokes = [[(u + du, v + dv) for u, v in P.simplify(st, 0.15)] for st in fit_strokes(d["strokes"], size_mm)]
         self.draw_strokes(strokes, fname)
 
     def draw_strokes(self, strokes_mm, name):

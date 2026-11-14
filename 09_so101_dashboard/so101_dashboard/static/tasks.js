@@ -97,6 +97,18 @@ function drawStep(prompt) {
     `<p>With one hand, <b>hold the robot's forearm</b>. When you press the button the arm goes <b>limp</b>
       (the gripper keeps holding the pen) – don't let it drop.</p>`,
     B("go", "✓ I'm holding the arm – loosen it", "primary big")];
+  if (p.includes("near a corner")) {
+    const n = (p.match(/\((\d) of 4/) || [])[1] || "1";
+    return [3, `Touch corner ${n} of 4`,
+      `<p>The arm is limp. Move it so the pen tip <b>touches the paper near a corner</b> of the sheet (about 2 cm in
+        from the edges), pen as straight down as you can, and press the button. Any corner order is fine.
+        <span class="muted">This maps the paper's height so the pen touches evenly everywhere.</span></p>`,
+      B("go", `✓ Touching corner ${n}`, "primary big") + B("done", "Skip the corners")];
+  }
+  if (p.includes("at the centre of the sheet")) return [3, "Now the centre",
+    `<p>Put the pen tip <b>on the paper at the centre of the sheet</b>, pen <b>straight down</b>. Hold it still and press
+      the button – the robot remembers this pose and holds it.</p>`,
+    B("go", "✓ Tip is at the centre – keep it here", "primary big")];
   if (p.includes("move the pen by hand")) return [3, "Place the pen on the paper",
     `<p>Move the arm by hand so the pen points <b>straight down</b> with its <b>tip touching the paper</b> where you
       want the drawing (best near the middle of the sheet). Hold it still and press the button – the robot
