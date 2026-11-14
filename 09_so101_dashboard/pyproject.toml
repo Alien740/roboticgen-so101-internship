@@ -17,6 +17,7 @@ ai = ["anthropic>=2.8"]          # AI tab (Claude); everything else needs only t
 
 [project.scripts]
 so101-dashboard = "so101_dashboard.__main__:main"
+so101-robot = "so101_dashboard.robot_cli:main"
 
 [tool.setuptools.packages.find]
 include = ["so101_dashboard*"]

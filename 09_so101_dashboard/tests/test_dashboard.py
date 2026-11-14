@@ -333,7 +333,8 @@ def test_ai_agent_runs_robot_tools_through_the_controller(ctl):
     assert all(t["strict"] and t["input_schema"]["additionalProperties"] is False for t in TOOLS)
     ctl.set_speed("fast")
     ag = AIAgent(ctl)
-    ag._sdk_problem = lambda: None                                      # no real key needed: scripted
+    ag._sdk_problem = lambda: None
+    ag.backend = lambda: "api"                                          # the SDK tool loop, scripted                                      # no real key needed: scripted
     ag._client = _FakeClaude([
         ([("get_state", {})], "tool_use"),
         ([("move_gripper_to", {"reach_cm": 22, "height_cm": 8, "base_deg": 20, "pointing": "down"}),
@@ -359,6 +360,7 @@ def test_ai_agent_stops_on_estop(ctl):
     from so101_dashboard.ai import AIAgent
     ag = AIAgent(ctl)
     ag._sdk_problem = lambda: None
+    ag.backend = lambda: "api"                                          # the SDK tool loop, scripted
     ag._client = _FakeClaude([([("wait", {"seconds": 0.5})], "tool_use"), ([("go_to_pose", {"name": "ready"})], "tool_use"),
                               (["never reached"], "end_turn")])
     ctl.emergency_stop()
@@ -367,3 +369,13 @@ def test_ai_agent_stops_on_estop(ctl):
     assert any(m["role"] == "error" for m in ag.log)
     assert not any("never reached" in m["text"] for m in ag.log)
     assert not ag.messages or ag.messages[-1]["role"] != "user"           # nothing left dangling
+
+
+def test_robot_cli_maps_commands_to_agent_tools():
+    from so101_dashboard.robot_cli import parse
+    assert parse(["move", "22", "5", "-10"]) == ("move_gripper_to", {"reach_cm": 22.0, "height_cm": 5.0, "base_deg": -10.0, "pointing": "down"})
+    assert parse(["gripper", "0"]) == ("set_gripper", {"percent": 0.0})
+    assert parse(["motion", "hello"]) == ("play_motion", {"name": "hello"})
+    for bad in (["rm", "-rf"], ["move", "1"], []):
+        with pytest.raises(SystemExit):
+            parse(bad)

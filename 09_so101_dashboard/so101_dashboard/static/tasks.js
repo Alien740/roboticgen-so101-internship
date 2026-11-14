@@ -141,7 +141,10 @@ let aiTimer = null, aiSeen = "";
 async function pollAI() {
   let st;
   try { st = await (await fetch("/api/ai", { headers: HDR })).json(); } catch (_) { return; }
-  $("#aiProblem").hidden = !st.problem; $("#aiProblem").textContent = st.problem || "";
+  $("#aiProblem").hidden = false;
+  $("#aiProblem").textContent = st.problem || (st.backend === "claude-code"
+    ? "Using Claude Code with your claude.ai login (it may only run the robot command)."
+    : "Using the Anthropic API key.");
   const html = st.log.map(m => `<div class="m ${m.role}">${escapeHtml(m.text)}</div>`).join("")
     + (st.busy ? `<div class="m busy">working…</div>` : "");
   if (html !== aiSeen) { aiSeen = html; $("#aiLog").innerHTML = html || `<div class="m busy">Say what the arm should do.</div>`; $("#aiLog").scrollTop = 1e9; }

@@ -5,16 +5,23 @@ table floor, E-STOP, gripper stall guard), exactly like the buttons. The agent r
 background thread; the page polls `state()` for the transcript. E-STOP or the Stop button ends the
 run at the next tool call.
 
-Needs the `anthropic` package and credentials in the environment of the process running the
-dashboard (ANTHROPIC_API_KEY, or an `ant auth login` profile).
+Two backends, picked automatically:
+- "api": the Anthropic SDK with ANTHROPIC_API_KEY in the dashboard's environment (tool loop here).
+- "claude-code": the Claude Code CLI with your claude.ai login (`claude auth login`). It runs headless
+  (`claude -p`) with every tool switched off except Bash, and Bash may only run `so101-robot`
+  (robot_cli.py), which calls back into this agent's tools through POST /api/ai_tool.
 """
 from __future__ import annotations
 
 import json
 import math
 import os
+import shutil
+import subprocess
+import sys
 import threading
 import time
+import uuid
 from pathlib import Path
 
 from so101 import kinematics as K
@@ -23,6 +30,8 @@ from .motions import MOTIONS
 
 MODEL = "claude-opus-5-5"
 MAX_STEPS = 24                     # model calls per instruction
+CLAUDE_CLI = shutil.which("claude") or str(Path.home() / ".local" / "bin" / "claude")
+ROBOT_CLI = shutil.which("so101-robot") or str(Path(sys.executable).parent / "so101-robot")
 NO_KEY = ("No Anthropic API key in the dashboard's environment. Stop the dashboard (Ctrl+C), then in "
           "Terminal: export ANTHROPIC_API_KEY=sk-ant-...  and start so101-dashboard again.")
 SETTLE_TIMEOUT_S = 12.0
@@ -46,6 +55,18 @@ How to work:
 - Pen drawing is done in the Draw tab, not with these tools - say so if asked to draw.
 - If a tool returns an error (E-STOP, out of reach, not connected), stop and tell the user plainly.
 Keep replies short: one or two sentences saying what you did or what you need."""
+
+CLI_SYSTEM = SYSTEM.replace("through tools.", "with ONE shell command, run through the Bash tool:") + f"""
+
+The command is {ROBOT_CLI} (always use this full path; nothing else is allowed):
+  {ROBOT_CLI} state                                   where the arm is (reach/height/base, gripper %, joints)
+  {ROBOT_CLI} move REACH_CM HEIGHT_CM BASE_DEG down    move the gripper tip (pointing: down | angled | forward)
+  {ROBOT_CLI} gripper PERCENT                          0 = closed (stops on an object) ... 95 = open
+  {ROBOT_CLI} pose home|clear_view|ready
+  {ROBOT_CLI} joint NAME DEGREES                       shoulder_pan shoulder_lift elbow_flex wrist_flex wrist_roll
+  {ROBOT_CLI} motion hello|yes|no|dance|bow|chomp
+  {ROBOT_CLI} wait SECONDS
+Run one command per Bash call; each waits until the arm stops. Exit code 1 = error: stop and say why."""
 
 TOOLS = [
     {"name": "get_state", "strict": True,
@@ -95,11 +116,22 @@ class AIAgent:
         self.busy = False
         self._stop = threading.Event()
         self._client = None
+        self._proc = None                    # claude-code backend: the running `claude -p`
+        self._session = None                 # claude-code backend: conversation id to resume
+        self.workdir = None                  # set by the server: where Claude Code keeps this chat
 
     # ------------------------------------------------------------------ page API
+    def backend(self):
+        if os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"):
+            return "api"
+        if Path(CLAUDE_CLI).exists():
+            return "claude-code"
+        return None
+
     def state(self):
-        return {"busy": self.busy, "log": self.log[-60:], "model": MODEL, "ready": self._sdk_problem() is None,
-                "problem": self._sdk_problem()}
+        problem = self._sdk_problem()
+        return {"busy": self.busy, "log": self.log[-60:], "model": MODEL, "ready": problem is None,
+                "problem": problem, "backend": self.backend()}
 
     def ask(self, text):
         text = str(text).strip()[:1000]
@@ -114,27 +146,86 @@ class AIAgent:
         self._stop.clear()
         self.log.append({"role": "user", "text": text})
         self.messages.append({"role": "user", "content": text})
-        threading.Thread(target=self._run, daemon=True).start()
+        run = self._run if self.backend() == "api" else self._run_cli
+        threading.Thread(target=run, args=() if run == self._run else (text,), daemon=True).start()
 
     def stop(self):
         self._stop.set()
+        p = self._proc
+        if p is not None and p.poll() is None:
+            p.terminate()
 
     def reset(self):
         if self.busy:
             raise RuntimeError("stop the current instruction first")
-        self.messages, self.log = [], []
+        self.messages, self.log, self._session = [], [], None
 
     # ------------------------------------------------------------------ agent loop
     def _sdk_problem(self):
+        b = self.backend()
+        if b == "claude-code":
+            return None if Path(ROBOT_CLI).exists() else f"{ROBOT_CLI} is missing - reinstall the dashboard (install.sh)"
+        if b is None:
+            return NO_KEY + " Or install Claude Code and run: claude auth login"
         try:
             import anthropic  # noqa: F401
         except ImportError:
             return "the 'anthropic' package is not installed in the dashboard's Python (pip install anthropic)"
-        # the SDK also reads `ant auth login` profiles from ~/.config/anthropic
-        if not (os.environ.get("ANTHROPIC_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN")
-                or (Path.home() / ".config" / "anthropic").exists()):
-            return NO_KEY
         return None
+
+    # ------------------------------------------------------------------ claude-code backend
+    def _run_cli(self, text):
+        """One instruction through `claude -p` (your claude.ai login). Only Bash is enabled and Bash
+        may only run so101-robot; anything else is denied without asking (permission mode dontAsk)."""
+        try:
+            first = self._session is None
+            if first:
+                self._session = str(uuid.uuid4())
+            cmd = [CLAUDE_CLI, "-p", text, "--model", MODEL, "--tools", "Bash",
+                   "--allowedTools", f"Bash({ROBOT_CLI}:*)", "--permission-mode", "dontAsk",
+                   "--append-system-prompt", CLI_SYSTEM, "--output-format", "stream-json", "--verbose",
+                   *(["--session-id", self._session] if first else ["--resume", self._session])]
+            wd = Path(self.workdir or Path.home())
+            wd.mkdir(parents=True, exist_ok=True)
+            self._proc = subprocess.Popen(cmd, cwd=wd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                          text=True, encoding="utf-8", errors="replace")
+            ok = False
+            for line in self._proc.stdout:
+                try:
+                    d = json.loads(line)
+                except ValueError:
+                    continue
+                t = d.get("type")
+                if t == "assistant":
+                    for b in d["message"]["content"]:
+                        if b.get("type") == "text" and b["text"].strip():
+                            self.log.append({"role": "assistant", "text": b["text"].strip()})
+                        elif b.get("type") == "tool_use":
+                            c = str(b.get("input", {}).get("command", "")).replace(ROBOT_CLI, "robot")
+                            self.log.append({"role": "tool", "text": f"{c} …"})
+                elif t == "user":
+                    for b in d["message"]["content"]:
+                        if isinstance(b, dict) and b.get("type") == "tool_result":
+                            out = b.get("content")
+                            out = " ".join(x.get("text", "") for x in out) if isinstance(out, list) else str(out)
+                            if self.log and self.log[-1]["role"] == "tool":
+                                self.log[-1]["text"] = self.log[-1]["text"].replace(" …", f" → {out.strip()[:200]}")
+                elif t == "result":
+                    ok = d.get("subtype") == "success" and not d.get("is_error")
+                    if not ok:
+                        self.log.append({"role": "error", "text": str(d.get("result") or d.get("subtype"))[:300]})
+            self._proc.wait()
+            if self._stop.is_set():
+                self.log.append({"role": "error", "text": "Stopped."})
+            elif not ok and self._proc.returncode:
+                self.log.append({"role": "error", "text": f"Claude Code exited with {self._proc.returncode} - is it logged in? (claude auth login)"})
+                if first:
+                    self._session = None
+        except Exception as e:
+            self.log.append({"role": "error", "text": f"{type(e).__name__}: {e}"})
+        finally:
+            self._proc = None
+            self.busy = False
 
     def _run(self):
         import anthropic
