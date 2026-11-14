@@ -43,13 +43,17 @@ const SIDE_JOINTS = {
   elbow_flex:    { from: "elbow", sign: -1, range: [-60, 97] },  // bend your elbow (forearm up) = forearm up
   wrist_flex:    { from: "wrist", sign: -1, range: [-40, 95] },  // hand down = gripper down
 };
+// Follow (side view) first moves here: gripper ~21 cm out, 5 cm above the table, pointing down,
+// half open - room to move every way. Folded at rest, most first moves would hit the table.
+const READY = { shoulder_lift: -20, elbow_flex: 30, wrist_flex: 70, wrist_roll: 0, gripper: 60 };
+const READY_S = 2.5;
 // finger curl (mean bend of the 4 fingers over their 3 joints, deg): open hand ~30, fist ~200+
 const CURL_OPEN = 70, CURL_CLOSED = 150;
 const SIDES = { right: { sh: 12, el: 14, wr: 16, idx: 20 }, left: { sh: 11, el: 13, wr: 15, idx: 19 } };
 
 const video = $("#handVideo"), canvas = $("#handCanvas"), ctx = canvas.getContext("2d");
 let handLm = null, poseLm = null, running = false, feat = null, neutral = null, lastSend = 0, busy = false;
-let armRef = null, steady = 0, mode = "side", engage = null, armLen = 0, facing = 1;
+let armRef = null, steady = 0, mode = "side", engage = null, armLen = 0, facing = 1, readyUntil = 0;
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const deg = r => (r * 180) / Math.PI;
@@ -389,12 +393,18 @@ function sideFrame(ts) {
   drawArm(P, s, false);
   if (hand) drawHand(hand.lm);
   feat = smooth(sideFeatures(P, s, hand, feat));
-  if (feat.frontal > 0.8) {                                    // facing the camera: angles are meaningless
+  // seen side-on the far shoulder is hidden and guessed, so only trust the "facing" test when both
+  // shoulders are clearly visible, and only stop when it is unmistakable
+  const bothShoulders = (P[11].visibility ?? 1) > 0.8 && (P[12].visibility ?? 1) > 0.8;
+  if (bothShoulders && feat.frontal > 1.6) {
     release();
     status("Turn SIDEWAYS – the camera should see your arm from the side", "facing the camera – robot holds still");
     return;
   }
+  const hint = (P[s.sh].visibility ?? 1) < 0.8 || P[s.sh].y < 0.04 ? "Move back: your shoulder should be in the picture"
+    : bothShoulders && feat.frontal > 1.0 ? "Turn a bit more sideways" : "";
   steady++;
+  if (performance.now() < readyUntil) { status("Moving to the ready pose…", `${side} arm – robot getting ready`); return; }
   if (follow && steady >= STEADY_FRAMES && !engage && S && S.measured)
     engage = { human: { ...feat }, robot: { ...S.measured } };  // clutch in: your pose = robot's pose now
   const t = sideTarget(feat, engage);
@@ -403,7 +413,7 @@ function sideFrame(ts) {
     status(follow ? "Hold still…" : "Tick “Follow me” to move the robot", follow ? `${side} arm – hold still` : `${side} arm`);
     return;
   }
-  status("", `${side} arm – following`);
+  status(hint, `${side} arm – following`);
   send("mimic", { joints: t });
 }
 
@@ -508,6 +518,8 @@ $("#handFollow").onchange = e => {
   if (mode === "side" && S && S.measured) {                   // work in the plane the robot already faces
     const p = Math.round(clamp(S.measured.shoulder_pan, -75, 75));
     $("#planePan").value = p; $("#planePan").closest(".slider").querySelector("output").textContent = `${p}°`;
+    api("goto", { pose: { shoulder_pan: p, ...READY }, duration: READY_S })   // then the clutch engages there
+      .then(() => (readyUntil = performance.now() + READY_S * 1000 + 300)).catch(() => {});
   }
   toast(mode !== "hand" ? "Following: hold still a moment – the robot eases into your arm's pose"
     : "Following: hold your hand steady in view to start – the arm starts from where it is");
