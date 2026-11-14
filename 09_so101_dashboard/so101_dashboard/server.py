@@ -118,20 +118,26 @@ class App:
             m = MOTIONS.get(body["name"])
             if m is None:
                 raise KeyError(f"unknown motion '{body['name']}'")
+            self._torque_on()
             c.play(m["frames"], m["label"], body.get("speed", 1.0))
         elif name == "record":
             if body["op"] == "start":
                 c.record_start()
             else:
                 frames = c.record_stop()
+                moved = max(max(f[1][j] for f in frames) - min(f[1][j] for f in frames) for j in frames[0][1])
+                if moved < 3.0:
+                    raise RuntimeError(f"nothing was recorded: the arm moved only {moved:.1f} deg. To move it by hand, "
+                                       "torque must be off ('Record by hand' does that) - with torque on the motors hold it still")
                 name_ = self._rec_name(body.get("name") or time.strftime("rec-%H%M%S"))
                 self.rec_dir.mkdir(parents=True, exist_ok=True)
                 (self.rec_dir / f"{name_}.json").write_text(json.dumps({"name": name_, "frames": frames}))
-                return {"ok": True, "name": name_, "seconds": frames[-1][0], "frames": len(frames)}
+                return {"ok": True, "name": name_, "seconds": frames[-1][0], "frames": len(frames), "moved_deg": round(moved, 1)}
         elif name == "play":
             f = self.rec_dir / f"{self._rec_name(body['name'])}.json"
             if not f.exists():
                 raise KeyError(f"no recording '{body['name']}'")
+            self._torque_on()
             c.play(json.loads(f.read_text())["frames"], body["name"], body.get("speed", 1.0))
         elif name == "delete_recording":
             (self.rec_dir / f"{self._rec_name(body['name'])}.json").unlink(missing_ok=True)
@@ -172,6 +178,19 @@ class App:
         else:
             raise KeyError(f"unknown command '{name}'")
         return {"ok": True}
+
+    def _torque_on(self):
+        """Replays need the motors on; after recording by hand they are off. Switching on holds the
+        arm exactly where it is (goal = present position first), then playback eases from there."""
+        c = self.ctl
+        if c.torque:
+            return
+        c.set_torque(True)
+        t0 = time.monotonic()
+        while not c.torque and time.monotonic() - t0 < 3.0:
+            time.sleep(0.05)
+        if not c.torque:
+            raise RuntimeError("could not switch the motors on")
 
     @staticmethod
     def _rec_name(n):

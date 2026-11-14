@@ -170,9 +170,12 @@
 
     <div class="tabpane" id="tab-record" hidden>
       <h3>Record &amp; replay <small>teach a movement, then play it back</small></h3>
-      <p class="muted">While recording, move the arm any way you like: the sliders, the hand joystick, or by hand
-        (untick <b>Torque</b> at the top first – hold the arm!). Replays start from the first recorded pose.</p>
+      <p class="muted"><b>Record by hand</b> (ticked): the motors switch off so you can move the arm yourself – hold it
+        when you press Record; <b>Stop &amp; save</b> switches them back on and the arm holds where you left it.
+        Untick it to record moves made with the sliders, hand joystick or AI instead. Replays start from the first
+        recorded pose.</p>
       <div class="row wrap">
+        <label class="toggle"><input type="checkbox" id="recByHand" checked> <span>Record by hand</span></label>
         <input id="recName" class="btn" placeholder="name, e.g. pick-left" maxlength="40">
         <button class="btn primary" id="recBtn">● Record</button>
         <span id="recState" class="muted"></span>

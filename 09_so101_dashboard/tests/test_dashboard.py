@@ -387,3 +387,19 @@ def test_playback_before_the_first_frame_holds_the_first_pose():
     c.playback = {"frames": [[0.05, {"shoulder_pan": 10.0}], [1.0, {"shoulder_pan": 20.0}]],
                   "t0": time.monotonic(), "speed": 1.0, "name": "rec"}
     assert c._playback_target() is False and c.target["shoulder_pan"] == 10.0
+
+
+def test_record_refuses_a_recording_where_nothing_moved(ctl):
+    from so101_dashboard.server import App
+    app = App.__new__(App); app.ctl = ctl; app.prof = P.load("my_so101"); app.rec_dir = app.prof.run_dir / "recordings"
+    ctl.record_start(); time.sleep(0.6)
+    with pytest.raises(RuntimeError, match="nothing was recorded"):
+        app.command("record", {"op": "stop", "name": "still"})
+
+
+def test_play_switches_torque_back_on(ctl):
+    from so101_dashboard.server import App
+    app = App.__new__(App); app.ctl = ctl; app.prof = P.load("my_so101")
+    ctl.set_torque(False); wait(lambda: not ctl.torque)
+    app.command("motion", {"name": "yes", "speed": 2.0})
+    assert ctl.torque and (ctl.traj is not None or ctl.playback is not None)

@@ -218,13 +218,22 @@ async function loadLibrary() {
 $("#motionStop").onclick = () => {                             // stop = hold where it is now
   if (S && S.measured) api("set", { joints: S.measured, source: "stop" }).catch(() => {});
 };
+let recByHand = false;
 $("#recBtn").onclick = async () => {
   if (S && S.recording !== null && S.recording !== undefined) {
     try {
       const r = await api("record", { op: "stop", name: $("#recName").value });
-      toast(`Saved "${r.name}" (${r.seconds.toFixed(1)} s)`); $("#recName").value = ""; loadLibrary();
+      toast(`Saved "${r.name}" (${r.seconds.toFixed(1)} s, moved ${r.moved_deg}°)`); $("#recName").value = ""; loadLibrary();
     } catch (_) { /* toast shown */ }
+    if (recByHand && S && !S.torque) api("torque", { on: true }).catch(() => {});   // hold where it was left
+    recByHand = false;
   } else {
+    if (!S || S.state !== "ready") { toast("Connect the arm first"); return; }
+    recByHand = $("#recByHand").checked;
+    if (recByHand) {
+      if (!confirm("Hold the arm now: the motors switch off so you can move it by hand.\nPress OK while holding it.")) return;
+      try { if (S.torque) await api("torque", { on: false }); } catch (_) { return; }
+    }
     api("record", { op: "start" }).catch(() => {});
   }
 };
