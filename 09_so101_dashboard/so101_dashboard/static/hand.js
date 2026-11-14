@@ -1,17 +1,22 @@
 // Hand control: MediaPipe hand landmarks from this computer's camera -> POST /api/hand ~20x/s.
 // The server does the IK and keeps every safety rule (limits, E-STOP, stall guard); this file only
 // turns the hand into a target: pan / reach / height / pitch / roll / gripper, relative to a
-// "neutral" hand pose captured when following starts (or with Set neutral).
+// "neutral" hand pose. It works like a mouse with a clutch: when following starts (or the hand comes
+// back into view) the hand must be steady for a moment, then the current hand pose is tied to where
+// the arm IS - so engaging never makes the arm jump - and only hand movement from there moves it.
+// Hand out of view = clutch released, the arm holds.
 // Uses app.js globals: $, api, ready, toast.
 const MP = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14";
 const MODEL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task";
 const SEND_MS = 50;
-const ARM_NEUTRAL = { pan: 0, r: 0.22, z: 0.12, pitch: -40, roll: 0 };
+const ARM_NEUTRAL = { pan: 0, r: 0.22, z: 0.12, pitch: -40, roll: 0 };    // before the arm reports a pose
+const STEADY_FRAMES = 12;                                     // ~0.4 s of visible hand before engaging
 const BONES = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [5, 9], [9, 10], [10, 11], [11, 12],
   [9, 13], [13, 14], [14, 15], [15, 16], [13, 17], [0, 17], [17, 18], [18, 19], [19, 20]];
 
 const video = $("#handVideo"), canvas = $("#handCanvas"), ctx = canvas.getContext("2d");
 let landmarker = null, running = false, feat = null, neutral = null, lastSend = 0, busy = false;
+let armRef = null, steady = 0;
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const deg = r => (r * 180) / Math.PI;
@@ -103,14 +108,21 @@ function smooth(f) {
   return out;
 }
 
-function target(f, n) {
+// where the arm is now, in the hand-control coordinates (from the live state of app.js)
+function armPose() {
+  if (!S || !S.tool) return { ...ARM_NEUTRAL };
+  const [x, y, z] = S.tool.xyz_mm.map(v => v / 1000);
+  return { pan: deg(Math.atan2(y, x)), r: Math.hypot(x, y), z, pitch: S.tool.pitch_deg, roll: S.measured.wrist_roll };
+}
+
+function target(f, n, a = ARM_NEUTRAL) {
   const side = $("#hgMirror").checked ? 1 : -1;               // default: you stand behind the robot
   return {
-    pan: clamp(side * (f.x - n.x) * val("#hgPan") + ARM_NEUTRAL.pan, -90, 90),
-    z: clamp(ARM_NEUTRAL.z + (n.y - f.y) * val("#hgZ") / 100, 0.02, 0.30),
-    r: clamp(ARM_NEUTRAL.r + (f.size / n.size - 1) * val("#hgR") / 100, 0.12, 0.33),
-    pitch: $("#hgPitchOff").checked ? ARM_NEUTRAL.pitch : clamp(ARM_NEUTRAL.pitch - (f.flex - n.flex), -90, 30),
-    roll: $("#hgRollOff").checked ? null : ARM_NEUTRAL.roll - wrap(f.roll - n.roll),
+    pan: clamp(a.pan + side * (f.x - n.x) * val("#hgPan"), -90, 90),
+    z: clamp(a.z + (n.y - f.y) * val("#hgZ") / 100, 0.02, 0.30),
+    r: clamp(a.r + (f.size / n.size - 1) * val("#hgR") / 100, 0.12, 0.33),
+    pitch: $("#hgPitchOff").checked ? clamp(a.pitch, -90, 30) : clamp(a.pitch - (f.flex - n.flex), -90, 30),
+    roll: $("#hgRollOff").checked ? null : a.roll - wrap(f.roll - n.roll),
     grip: $("#hgGrip").value === "pinch"
       ? clamp((f.pinch - 0.25) / (0.9 - 0.25), 0, 1) * 95
       : clamp((f.open - 1.05) / (1.75 - 1.05), 0, 1) * 95,  // fist = closed, open hand = open
@@ -127,21 +139,38 @@ function loop() {
     canvas.width = video.videoWidth; canvas.height = video.videoHeight;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const lm = res.landmarks?.[0], world = res.worldLandmarks?.[0];
+    const follow = $("#handFollow").checked;
     if (lm && world) {
       draw(lm);
       feat = smooth(features(lm, world));
-      if (!neutral) neutral = { ...feat };
-      $("#hrSeen").textContent = "visible";
-      const t = target(feat, neutral);
-      show(t);
-      if ($("#handFollow").checked) send(t);
+      steady++;
+      if (!neutral && steady >= STEADY_FRAMES) {               // engage: tie this hand pose to the arm's pose
+        neutral = { ...feat };
+        armRef = follow ? armPose() : null;
+      }
+      if (!neutral) {
+        status(follow ? "Hold your hand steady…" : "", "visible – hold steady");
+      } else {
+        const t = target(feat, neutral, armRef || ARM_NEUTRAL);
+        show(t);
+        status(follow ? "" : "Tick “Follow my hand” to move the arm", follow ? "following" : "visible");
+        if (follow) send(t);
+      }
     } else {
-      feat = null;                                             // arm holds (server timeout)
+      feat = null; steady = 0;                                 // clutch released: arm holds (server timeout)
+      if (follow) neutral = null;                              // next time the hand appears, re-engage
       for (const k in euro) delete euro[k];
-      $("#hrSeen").textContent = "no hand – arm holds still";
+      status(follow ? "Raise your hand into view (palm to the camera)" : "Show your hand to the camera",
+        "no hand – arm holds still");
     }
   }
   requestAnimationFrame(loop);
+}
+
+function status(onVideo, line) {
+  const m = $("#handMsg");
+  if (m.textContent !== onVideo) m.textContent = onVideo;
+  $("#hrSeen").textContent = line;
 }
 
 function draw(lm) {
@@ -186,14 +215,17 @@ async function listCameras() {
 listCameras().catch(() => {});
 $("#handCamSel").onchange = () => { if (running) { stopCamera(); startCamera(); } };
 $("#handCam").onclick = () => (running ? stopCamera() : startCamera());
-$("#handNeutral").onclick = () => { if (feat) { neutral = { ...feat }; toast("Neutral set: this hand pose = arm's middle pose"); } };
+$("#handNeutral").onclick = () => {
+  if (!feat) { toast("Show your hand to the camera first"); return; }
+  neutral = { ...feat }; armRef = $("#handFollow").checked ? armPose() : null;
+  toast("Neutral set: this hand pose = where the arm is now");
+};
 $("#handFollow").onchange = e => {
   e.target.blur();
+  neutral = null; steady = 0;                                  // engage on the next steady hand
   if (!e.target.checked) return;
   if (!ready()) { e.target.checked = false; toast("Connect the arm (or the simulated one) first"); return; }
-  if (!feat) { e.target.checked = false; toast("Show your hand to the camera first"); return; }
-  neutral = { ...feat };
-  toast("Following – your current hand pose is the arm's middle pose");
+  toast("Following: hold your hand steady in view to start – the arm starts from where it is");
 };
 for (const id of ["#hgPan", "#hgZ", "#hgR", "#hgSmooth"]) {
   const inp = $(id); inp.oninput = () => (inp.closest(".slider").querySelector("output").textContent = inp.value);
