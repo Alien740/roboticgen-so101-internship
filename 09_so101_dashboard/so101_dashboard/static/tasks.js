@@ -105,10 +105,23 @@ function drawStep(prompt) {
         <span class="muted">This maps the paper's height so the pen touches evenly everywhere.</span></p>`,
       B("go", `✓ Touching corner ${n}`, "primary big") + B("done", "Skip the corners")];
   }
-  if (p.includes("at the centre of the sheet")) return [3, "Now the centre",
-    `<p>Put the pen tip <b>on the paper at the centre of the sheet</b>, pen <b>straight down</b>. Hold it still and press
-      the button – the robot remembers this pose and holds it.</p>`,
-    B("go", "✓ Tip is at the centre – keep it here", "primary big")];
+  if (p.includes("too thin")) return [2, "The pen is too thin",
+    `<p>The jaws closed almost completely, so they can't clamp this pen – it would wobble and overload the gripper.
+      <b>Wrap tape around the pen</b> where the jaws hold it, until it is about 12 mm thick. Hold the pen and press the
+      button – the gripper opens so you can put it back.</p>`,
+    B("go", "✓ Holding it – open the gripper", "primary big") + B("ignore", "Draw anyway")];
+  if (p.includes("taped pen across")) return [2, "Put the taped pen back",
+    `<p>Lay the taped pen across the jaws (tip out 5–7 cm), hold it, then press the button.</p>`,
+    B("go", "✓ Pen is in – grip it", "primary big")];
+  if (p.includes("tilted about")) return [3, "Centre, pen tilted",
+    `<p>Put the pen tip <b>on the centre of the sheet</b> with the pen <b>tilted about 25°</b> (lean it toward you or to the
+      side). Hold it still and press the button. <span class="muted">With the next step this measures the pen's length,
+      so the tip lands exactly where planned even when the pen leans.</span></p>`,
+    B("go", "✓ Tip on the centre, pen tilted", "primary big") + B("skip", "Skip")];
+  if (p.includes("same centre spot")) return [3, "Centre, pen straight",
+    `<p>Keep the tip on <b>the same spot</b> and stand the pen <b>straight down</b>. Hold it still and press the button –
+      the robot remembers this pose and holds it.</p>`,
+    B("go", "✓ Straight down on the same spot", "primary big")];
   if (p.includes("move the pen by hand")) return [3, "Place the pen on the paper",
     `<p>Move the arm by hand so the pen points <b>straight down</b> with its <b>tip touching the paper</b> where you
       want the drawing (best near the middle of the sheet). Hold it still and press the button – the robot

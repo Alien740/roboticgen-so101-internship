@@ -129,9 +129,24 @@ def test_picture_lines_become_single_pen_strokes():
 
 def test_drawing_dry_run_plans_reachable_strokes():
     from so101.tasks import draw as D
-    sim = D.simulate(P.load(), D.fit_strokes([[(-20, -20), (20, -20), (20, 20), (-20, 20), (-20, -20)]], 40))
+    prof = P.load()
+    sim = D.simulate(prof, D.fit_strokes([[(-20, -20), (20, -20), (20, 20), (-20, 20), (-20, -20)]], 40))
     assert sim["ok"], sim["error"]
     downs = [f for f in sim["frames"] if f[2]]
-    assert downs and max(abs(f[3][2] - downs[0][3][2]) for f in downs) < 0.001    # pen stays on the paper plane
+    plane, press = D.pen_setup(prof)["plane"], prof["drawing"]["press"]
+    assert downs and max(abs(f[3][2] - (D.plane_z(plane, f[3]) - press)) for f in downs) < 1e-6   # follows the paper map
     ts = [f[0] for f in sim["frames"]]
     assert ts == sorted(ts)
+
+
+def test_pen_length_from_two_poses_with_the_same_tip():
+    from so101 import kinematics as K
+    from so101.tasks import draw as D
+    L, pen = 0.068, np.array([-0.119, 0.964, 0.239]) / np.linalg.norm([-0.119, 0.964, 0.239])
+    seed = {"shoulder_pan": -54.8, "shoulder_lift": 49.4, "elbow_flex": 45.9, "wrist_flex": -81.5, "wrist_roll": 99.8}
+    A1, _, _ = K.pen_ik_local((0.21, 0.22, -0.03), seed, pen, length=L)
+    T1 = K.fk(A1)
+    down = T1[:3, :3].T @ np.array([0, 0, -1.0])
+    A2, err, _ = K.pen_ik_local((0.21, 0.22, -0.03), {**A1, "wrist_flex": A1["wrist_flex"] + 25}, down, w_vert=0.0, length=L)
+    got, mismatch, tilt = D.pen_length(T1, K.fk(A2), down)
+    assert err < 1e-4 and tilt > 5 and abs(got - L) < 0.001 and mismatch < 0.001

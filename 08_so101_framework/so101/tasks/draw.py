@@ -108,6 +108,19 @@ def fit_surface(samples):
     return np.linalg.lstsq(np.c_[tuple(cols)], P[:, 2], rcond=None)[0].tolist()
 
 
+def pen_length(T_straight, T_tilted, pen_dir):
+    """Pivot: the tip was on the same spot in both poses -> tool + L*d agree. Least squares for L.
+    Returns (L_m, mismatch_m, tilt_deg)."""
+    p1, p2 = T_straight[:3, 3], T_tilted[:3, 3]
+    d1, d2 = T_straight[:3, :3] @ pen_dir, T_tilted[:3, :3] @ pen_dir
+    dd = d1 - d2
+    tilt = math.degrees(math.acos(max(-1.0, min(1.0, float(d1 @ d2)))))
+    if dd @ dd < 1e-9:
+        return PEN_NOMINAL, 1.0, tilt
+    L = float(-(p1 - p2) @ dd / (dd @ dd))
+    return L, float(np.linalg.norm((p1 + L * d1) - (p2 + L * d2))), tilt
+
+
 # ------------------------------------------------------------------ dry run (no arm)
 def pen_setup(prof):
     """Pen direction, drawing spot, paper height, pen length and the arm pose from the last hand
@@ -118,7 +131,7 @@ def pen_setup(prof):
             "center": np.array(m.get("center") or prof["drawing"]["center"], float),
             "paper_z": float(m.get("paper_z", 0.0)), "length": float(m.get("length", PEN_NOMINAL)),
             "plane": m.get("plane") or [0.0, 0.0, float(m.get("paper_z", 0.0))],
-            "angles": m.get("angles"), "placed": "center" in m}
+            "angles": m.get("angles"), "placed": "center" in m, "length_measured": bool(m.get("length_measured"))}
 
 
 def travel_heights(strokes, d):
@@ -315,6 +328,18 @@ class Drawer:
         pos = arm.close(torque=self.d["pen_torque"])
         arm.hold()
         self.sess.event("pen_gripped", gripper=round(pos, 1))
+        while pos < self.d.get("min_grip", 4.0):
+            # jaws (almost) shut: the pen is too thin to be clamped - it wobbles and the gripper overloads
+            c = self.sess.ask(f"the jaws closed to {pos:.1f}% - the pen is too THIN to hold firmly. Wrap tape around it where "
+                              "the jaws hold it (to ~12 mm thick): 'go' opens the gripper to put it back, 'ignore' draws anyway",
+                              ["go", "ignore"])
+            if c.strip().lower() == "ignore":
+                break
+            arm.open()
+            self.sess.ask("put the taped pen ACROSS the jaws, deep between the pads, tip out 5-7 cm, then 'go'", ["go"])
+            pos = arm.close(torque=self.d["pen_torque"])
+            arm.hold()
+            self.sess.event("pen_gripped", gripper=round(pos, 1))
         self.sess.ask(f"pen gripped (contact {pos:.1f}). Let go, tug it to check it is firm, then 'go'")
 
     def tilt(self):
@@ -414,8 +439,13 @@ class Drawer:
                     if c.strip().lower() == "done":
                         break
                     corners.append(arm.angles())
-                self.sess.ask("now put the tip ON the paper at the CENTRE of the sheet, pen STRAIGHT DOWN; "
-                              "hold it still, then 'go'", ["go"])
+                # pen length (tool point -> tip) from two poses with the tip on the same spot: a guessed
+                # length puts a leaning pen's tip off by up to cm (corner touches, the near side of the sheet)
+                c = self.sess.ask("now put the tip ON the paper at the CENTRE of the sheet with the pen TILTED about 25 deg "
+                                  "(lean it toward you or sideways); hold it still, then 'go'", ["go", "skip"])
+                tilted = None if c.strip().lower() == "skip" else arm.angles()
+                self.sess.ask("keep the tip on the SAME centre spot and stand the pen STRAIGHT DOWN; hold it still, "
+                              "then 'go'", ["go"])
                 a = arm.angles()
             finally:
                 present = bus.sync_read("Present_Position", joints)
@@ -423,28 +453,40 @@ class Drawer:
                 bus.enable_torque(joints)
             T = K.fk(a)
             pen_dir = T[:3, :3].T @ DOWN                          # this pose = pen straight down
-            tips = [K.pen_tip(T, pen_dir, PEN_NOMINAL)] + [K.pen_tip(K.fk(c), pen_dir, PEN_NOMINAL) for c in corners]
-            off = [n for n, t in enumerate(tips[1:], 1) if abs(t[2] - tips[0][2]) > 0.02]
-            if off:                                               # > 2 cm from the centre: not on the paper
-                self.sess.say(f"ignoring corner touch {', '.join(map(str, off))} (more than 2 cm off the centre height)")
-                tips = [t for n, t in enumerate(tips) if n not in off]
+            length, measured = PEN_NOMINAL, False
+            if tilted is not None:
+                L, resid, tilt = pen_length(T, K.fk(tilted), pen_dir)
+                if tilt >= 10 and 0.01 <= L <= 0.15 and resid <= 0.006:
+                    length, measured = L, True
+                    self.sess.say(f"pen length {L * 1000:.0f} mm (tilt {tilt:.0f} deg, the two tips agree to {resid * 1000:.1f} mm)")
+                else:
+                    self.sess.say(f"could not measure the pen length (tilt {tilt:.0f} deg, length {L * 1000:.0f} mm, "
+                                  f"mismatch {resid * 1000:.1f} mm) - using {PEN_NOMINAL * 1000:.0f} mm")
+            tips = [K.pen_tip(T, pen_dir, length)] + [K.pen_tip(K.fk(c), pen_dir, length) for c in corners]
+            off = [n for n, t in enumerate(tips[1:], 1) if abs(t[2] - tips[0][2]) > 0.03]
+            if off:                                               # > 3 cm from the centre: not on the paper
+                self.sess.say(f"ignoring corner touch {', '.join(map(str, off))} (more than 3 cm off the centre height)")
+            all_heights = [round((t[2] - tips[0][2]) * 1000, 1) for t in tips[1:]]
+            tips = [t for n, t in enumerate(tips) if n not in off]
             tool_z = float(T[2, 3])
             center = np.array(T[:2, 3], float)
             # (no reachability gate here: the person just put the arm in this pose. A shape that can't be
             # drawn there fails when it is planned - before the pen goes down - and says why.)
             break
-        paper_z = tool_z - PEN_NOMINAL                            # tip height at the placed point
-        self.pen_dir, self.center, self.length = pen_dir, center, PEN_NOMINAL
+        paper_z = float(tips[0][2])                               # tip height at the placed point
+        self.pen_dir, self.center, self.length = pen_dir, center, length
         self.samples = [tuple(float(v) for v in t) for t in tips]
         self.coef = fit_surface(self.samples)
         self.prof.save_measured("pen", {"pen_dir_tool": [round(float(v), 3) for v in self.pen_dir],
                                         "center": [round(float(v), 4) for v in center],
-                                        "paper_z": round(paper_z, 4), "length": PEN_NOMINAL,
+                                        "paper_z": round(paper_z, 4), "length": round(length, 4),
+                                        "length_measured": measured,
                                         "plane": [round(float(v), 6) for v in self.coef],
                                         "touches": [[round(v, 4) for v in t] for t in self.samples],
                                         "angles": {k: round(float(v), 1) for k, v in a.items()}})
         self.sess.event("hand_placed", center_mm=[round(v * 1000) for v in center], tool_z_mm=round(tool_z * 1000, 1),
-                        touches=len(tips), corner_heights_mm=[round((t[2] - paper_z) * 1000, 1) for t in self.samples[1:]])
+                        touches=len(tips), corner_heights_mm=all_heights, pen_length_mm=round(length * 1000, 1),
+                        length_measured=measured)
         roll = a["wrist_roll"]                                    # allow the roll the person chose
         self.roll_lim = (min(self.roll_lim[0], roll - 10), max(self.roll_lim[1], roll + 10))
         self.sess.ask("got it - you can let go of the arm, then 'go' (the pen lifts off the paper)", ["go"])

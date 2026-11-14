@@ -72,7 +72,9 @@ def plan(prof_name, body):
     if not strokes or sum(map(len, strokes)) > 20000:
         raise ValueError("nothing to plan (or over 20000 points)")
     if body.get("fill"):                                          # biggest size where the pen is upright
-        size, (du, dv) = D.fit_sheet(strokes, lean_map(prof), prof["drawing"]["max_size_mm"])
+        # a measured pen length makes a leaning pen land where planned: more of the sheet is usable
+        max_lean = 15.0 if D.pen_setup(prof)["length_measured"] else 6.0
+        size, (du, dv) = D.fit_sheet(strokes, lean_map(prof), prof["drawing"]["max_size_mm"], max_lean)
     else:
         size, du, dv = min(float(body.get("size_mm", 100)), prof["drawing"]["max_size_mm"]), 0.0, 0.0
     mm = [[(u + du, v + dv) for u, v in st] for st in D.fit_strokes(strokes, size)]
