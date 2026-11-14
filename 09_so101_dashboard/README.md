@@ -38,11 +38,14 @@ Options: `--profile NAME` (framework profile, default `my_so101`), `--port 8000`
 - **Keyboard**: `Q/E W/S A/D Z/X R/F T/G` joints, arrows + PgUp/PgDn tool, Shift boost, 1/2/3 speed
 - **Gamepad**: same layout as the old `gamepad_control.py` (sticks pan/lift and roll/flex, LB/RB
   elbow, triggers gripper, Y boost, A home), Back switches to tool mode
-- **Hand**: the arm mimics your hand through the computer's webcam (MediaPipe hand tracking in
-  the browser): hand left/right = base, up/down = height, toward/away from the camera = reach,
-  finger tilt = tool pitch, doorknob turn = wrist roll, pinch = gripper; hand out of view = the arm
-  holds. The server does the IK (`/api/hand`) so every limit and the E-STOP still apply. Needs
-  Chrome/Safari with camera permission and internet the first time (model from jsdelivr / Google)
+- **Hand** (camera, MediaPipe in the browser), three modes:
+  - **Side view** (default): stand side-on; the robot works in one vertical plane (base set by a slider)
+    and its gripper follows your hand's reach/height in arm lengths, your hand's angle and your fingers
+    (fist = close). Steadiest, since the arm is seen in profile.
+  - **Front: whole arm**: hand position relative to your shoulder in 3D, including the base.
+  - **My hand**: the hand as a 3D cursor with a clutch (the arm starts from where it is).
+  All go through the server's IK (`/api/hand`): reach edge, noise hold-zone, table limit, E-STOP,
+  gripper stall guard. Needs Chrome/Safari with camera permission and internet the first time.
 - **Status**: per-motor position, goal, temperature, voltage, load, torque and fault flags; OS,
   Python, lerobot and serial ports; **Run doctor** button
 

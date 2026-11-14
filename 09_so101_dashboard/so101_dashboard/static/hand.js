@@ -1,4 +1,9 @@
-// Hand / arm control from this computer's camera (MediaPipe, in the browser). Two modes:
+// Hand / arm control from this computer's camera (MediaPipe, in the browser). Three modes:
+//
+// "Side view" (default): you stand side-on to the camera, which sees your arm in profile - 2D image
+//   landmarks, no depth guessing, so it is the steadiest. The robot works in ONE vertical plane (base
+//   fixed at the Base direction slider): hand forward/up relative to your shoulder, in arm lengths ->
+//   gripper reach/height (SIDE_SPACE), hand direction -> tool pitch, fingers -> gripper.
 //
 // "My whole arm" (default): body tracking finds where your hand is relative to your shoulder, as a
 //   fraction of your arm's length, and puts the gripper at the matching spot of the robot's picking
@@ -29,11 +34,15 @@ const ARM_SPACE = {
 };
 const HAND_BONES = [[0, 1], [1, 2], [2, 3], [3, 4], [0, 5], [5, 6], [6, 7], [7, 8], [5, 9], [9, 10], [10, 11], [11, 12],
   [9, 13], [13, 14], [14, 15], [15, 16], [13, 17], [0, 17], [17, 18], [18, 19], [19, 20]];
+const SIDE_SPACE = {
+  reach:  { from: [0.1, 1.0],  to: [0.15, 0.33] },           // hand at your shoulder line -> arm straight out
+  height: { from: [-0.9, 0.3], to: [0.02, 0.25] },           // hand low by your hip -> above your shoulder
+};
 const SIDES = { right: { sh: 12, el: 14, wr: 16, idx: 20 }, left: { sh: 11, el: 13, wr: 15, idx: 19 } };
 
 const video = $("#handVideo"), canvas = $("#handCanvas"), ctx = canvas.getContext("2d");
 let handLm = null, poseLm = null, running = false, feat = null, neutral = null, lastSend = 0, busy = false;
-let armRef = null, steady = 0, mode = "arm", engage = null;
+let armRef = null, steady = 0, mode = "side", engage = null, armLen = 0, facing = 1;
 
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 const deg = r => (r * 180) / Math.PI;
@@ -97,7 +106,7 @@ function stopCamera() {
 }
 
 function release() {                                           // clutch out: the robot holds
-  feat = null; neutral = null; engage = null; steady = 0;
+  feat = null; neutral = null; engage = null; steady = 0; armLen = 0;
   for (const k in euro) delete euro[k];
 }
 
@@ -185,13 +194,52 @@ function armTarget(f) {
 }
 
 // the hand landmarker sees up to 2 hands: take the one at the tracked arm's wrist
-function handAt(hres, wristPx) {
+function handAt(hres, wristPx, image = false) {
   let best = null, bd = 0.12;
   (hres.landmarks || []).forEach((lm, i) => {
     const d = Math.hypot(lm[0].x - wristPx.x, lm[0].y - wristPx.y);
-    if (d < bd) { bd = d; best = hres.worldLandmarks[i]; }
+    if (d < bd) { bd = d; best = image ? { lm, world: hres.worldLandmarks[i] } : hres.worldLandmarks[i]; }
   });
   return best;
+}
+
+// ------------------------------------------------------------------ side view: arm in profile
+// Everything in image coordinates (x scaled by the aspect ratio so angles are true), y up = -y.
+function sideFeatures(P, s, hand, prev) {
+  const ar = video.videoWidth / video.videoHeight;
+  const pt = p => [p.x * ar, p.y];
+  const [sh, el, wr] = [pt(P[s.sh]), pt(P[s.el]), pt(P[s.wr])];
+  // facing: the nose is in front of the shoulder; keep the last answer when it is ambiguous
+  const nose = pt(P[0]);
+  if (Math.abs(nose[0] - sh[0]) > 0.02) facing = Math.sign(nose[0] - sh[0]);
+  // arm length: the longest seen recently (a foreshortened arm would otherwise look "close")
+  const L = Math.hypot(el[0] - sh[0], el[1] - sh[1]) + Math.hypot(wr[0] - el[0], wr[1] - el[1]);
+  armLen = Math.max(armLen * 0.998, L);
+  const hd = hand ? [ (hand.lm[9].x - hand.lm[0].x) * ar, hand.lm[9].y - hand.lm[0].y ]
+    : [pt(P[s.idx])[0] - wr[0], pt(P[s.idx])[1] - wr[1]];
+  const f = {
+    reach: facing * (wr[0] - sh[0]) / armLen,
+    height: (sh[1] - wr[1]) / armLen,
+    pitch: deg(Math.atan2(-hd[1], facing * hd[0])),           // level forward = 0, down = -90
+  };
+  if (hand) Object.assign(f, gripFeatures(hand.world));
+  else if (prev) for (const k of ["pinch", "open"]) if (k in prev) f[k] = prev[k];
+  return f;
+}
+
+function sideTarget(f) {
+  const map = (k, v) => {
+    const { from: [a, b], to: [c, d] } = SIDE_SPACE[k];
+    return c + (d - c) * clamp((v - a) / (b - a), 0, 1);
+  };
+  return { pan: val("#planePan"), r: map("reach", f.reach), z: map("height", f.height),
+    pitch: clamp(f.pitch, -90, 30), roll: null, grip: "open" in f ? gripValue(f) : null };
+}
+
+// side-on, the arm nearer the camera is the better-seen one
+function nearerSide(P) {
+  const score = s => Math.min(...[s.sh, s.el, s.wr].map(i => P[i].visibility ?? 1));
+  return score(SIDES.right) >= score(SIDES.left) ? "right" : "left";
 }
 
 // ------------------------------------------------------------------ smoothing
@@ -248,7 +296,7 @@ function loop() {
     canvas.width = video.videoWidth; canvas.height = video.videoHeight;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const ts = performance.now();
-    if (mode === "arm") armFrame(ts); else handFrame(ts);
+    if (mode === "side") sideFrame(ts); else if (mode === "arm") armFrame(ts); else handFrame(ts);
   }
   requestAnimationFrame(loop);
 }
@@ -311,6 +359,38 @@ function armFrame(ts) {
   send("hand", body);
 }
 
+function sideFrame(ts) {
+  const pres = poseLm.detectForVideo(video, ts);
+  const P = pres.landmarks?.[0];
+  const follow = $("#handFollow").checked;
+  const side = P ? nearerSide(P) : "right", s = SIDES[side];
+  const seen = P && [s.sh, s.el, s.wr].every(i => (P[i].visibility ?? 1) > 0.5);
+  if (!seen) {
+    release();
+    status(follow ? "Turn sideways: the camera must see your arm in profile" : "Show your arm side-on to the camera",
+      "no arm – robot holds still");
+    return;
+  }
+  const hand = handAt(handLm.detectForVideo(video, ts), P[s.wr], true);
+  drawArm(P, s, false);
+  if (hand) drawHand(hand.lm);
+  feat = smooth(sideFeatures(P, s, hand, feat));
+  const t = sideTarget(feat);
+  showArm(t, !!hand);
+  steady++;
+  if (!follow || steady < STEADY_FRAMES) {
+    status(follow ? "Hold still…" : "Tick “Follow me” to move the robot", follow ? `${side} arm – hold still` : `${side} arm`);
+    return;
+  }
+  if (!engage) engage = { t0: performance.now(), from: armPose() };
+  const u = clamp((performance.now() - engage.t0) / 1000 / RAMP_S, 0, 1);
+  const e = engage.from, mix = (a, b) => a + (b - a) * u;      // ease from where the gripper is
+  const body = { pan: t.pan, r: mix(e.r, t.r), z: mix(Math.max(e.z, 0.02), t.z), pitch: mix(clamp(e.pitch, -90, 30), t.pitch) };
+  if (t.grip !== null) body.grip = t.grip;
+  status("", u < 1 ? `${side} arm – easing in` : `${side} arm – following`);
+  send("hand", body);
+}
+
 function status(onVideo, line) {
   const m = $("#handMsg");
   if (m.textContent !== onVideo) m.textContent = onVideo;
@@ -326,13 +406,13 @@ function drawHand(lm) {
   for (const p of lm) { ctx.beginPath(); ctx.arc(p.x * W, p.y * H, 4, 0, 7); ctx.fill(); }
 }
 
-function drawArm(P, s) {
+function drawArm(P, s, shoulders = true) {
   const W = canvas.width, H = canvas.height;
   ctx.lineWidth = 5; ctx.strokeStyle = "#219CBC"; ctx.fillStyle = "#FDB713";
-  for (const [a, b] of [[11, 12], [s.sh, s.el], [s.el, s.wr], [s.wr, s.idx]]) {
+  for (const [a, b] of [...(shoulders ? [[11, 12]] : []), [s.sh, s.el], [s.el, s.wr], [s.wr, s.idx]]) {
     ctx.beginPath(); ctx.moveTo(P[a].x * W, P[a].y * H); ctx.lineTo(P[b].x * W, P[b].y * H); ctx.stroke();
   }
-  for (const i of [11, 12, s.el, s.wr]) { ctx.beginPath(); ctx.arc(P[i].x * W, P[i].y * H, 7, 0, 7); ctx.fill(); }
+  for (const i of [...(shoulders ? [11, 12] : [s.sh]), s.el, s.wr]) { ctx.beginPath(); ctx.arc(P[i].x * W, P[i].y * H, 7, 0, 7); ctx.fill(); }
 }
 
 
@@ -376,13 +456,14 @@ function setMode(m) {
   mode = m;
   $$("#followMode button").forEach(b => b.classList.toggle("on", b.dataset.mode === m));
   $("#armHelp").hidden = m !== "arm";
+  $("#sideHelp").hidden = m !== "side";
   $("#handHelp").hidden = m !== "hand";
   $("#handNeutral").hidden = m !== "hand";
   release();
 }
 
 listCameras().catch(() => {});
-setMode("arm");
+setMode("side");
 $$("#followMode button").forEach(b => (b.onclick = () => setMode(b.dataset.mode)));
 $("#armSide").onchange = () => release();
 $("#handCamSel").onchange = () => { if (running) { stopCamera(); startCamera(); } };
@@ -397,9 +478,14 @@ $("#handFollow").onchange = e => {
   release();                                                   // (re)engage on the next steady frames
   if (!e.target.checked) return;
   if (!ready()) { e.target.checked = false; toast("Connect the arm (or the simulated one) first"); return; }
-  toast(mode === "arm" ? "Following: hold still a moment – the robot eases into your arm's pose"
+  if (mode === "side" && S && S.tool) {                       // work in the plane the robot already faces
+    const p = Math.round(clamp(armPose().pan, -75, 75));
+    $("#planePan").value = p; $("#planePan").closest(".slider").querySelector("output").textContent = `${p}°`;
+  }
+  toast(mode !== "hand" ? "Following: hold still a moment – the robot eases into your arm's pose"
     : "Following: hold your hand steady in view to start – the arm starts from where it is");
 };
+$("#planePan").oninput = e => (e.target.closest(".slider").querySelector("output").textContent = `${e.target.value}°`);
 for (const id of ["#hgPan", "#hgZ", "#hgR", "#hgSmooth"]) {
   const inp = $(id); inp.oninput = () => (inp.closest(".slider").querySelector("output").textContent = inp.value);
 }

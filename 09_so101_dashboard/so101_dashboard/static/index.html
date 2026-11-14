@@ -139,7 +139,8 @@
     <div class="tabpane" id="tab-hand" hidden>
       <h3>Hand / arm control <small>the robot follows you through this computer's camera</small></h3>
       <div class="seg" id="followMode" role="radiogroup" aria-label="What the robot follows">
-        <button data-mode="arm" class="on">My whole arm</button>
+        <button data-mode="side" class="on">Side view</button>
+        <button data-mode="arm">Front: whole arm</button>
         <button data-mode="hand">My hand</button>
       </div>
       <div class="hand-view">
@@ -163,7 +164,26 @@
         <dt>gripper</dt><dd id="hrGrip">–</dd>
       </dl>
 
-      <div id="armHelp">
+      <div id="sideHelp">
+        <h3>How to move <small>stand or sit SIDEWAYS to the camera, so it sees your arm in profile</small></h3>
+        <table class="keys">
+          <tr><td>hand out in front / close to you</td><td>gripper reaches out (33 cm) / comes near the base (15 cm)</td></tr>
+          <tr><td>hand low / high</td><td>gripper at the table / 25 cm up</td></tr>
+          <tr><td>point your hand down / level</td><td>gripper points down / forward</td></tr>
+          <tr><td>make a fist / open your hand</td><td>gripper closes / opens</td></tr>
+          <tr><td>Base direction slider</td><td>turns the plane the robot works in</td></tr>
+          <tr><td>arm leaves the picture</td><td>robot holds still</td></tr>
+          <tr><td><kbd>Space</kbd> / <kbd>Esc</kbd></td><td><b>E-STOP</b> (always)</td></tr>
+        </table>
+        <div class="sliders">
+          <div class="slider"><label for="planePan">Base direction</label><div class="track"><input type="range" id="planePan" min="-75" max="75" step="1" value="0"></div><output>0°</output></div>
+        </div>
+        <p class="muted">The robot moves only in one vertical plane, like your arm seen from the side; the base stays at the
+          direction above. It finds which way you face and which arm is nearer the camera by itself. Reach is measured
+          in your own arm lengths; the gripper stops at the edge of reach and never goes below the table.</p>
+      </div>
+
+      <div id="armHelp" hidden>
         <h3>How to move <small>stand back so the camera sees your shoulders and your whole arm</small></h3>
         <table class="keys">
           <tr><td>hand out in front / close to your body</td><td>gripper reaches out (33 cm) / comes near the base (15 cm)</td></tr>
