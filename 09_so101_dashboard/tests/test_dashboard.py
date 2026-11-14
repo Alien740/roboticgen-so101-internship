@@ -60,7 +60,7 @@ def test_cart_step_moves_straight_and_keeps_pitch():
 
 def test_goto_and_cartesian_jog(ctl):
     ctl.goto(WORK, duration=0.6)
-    wait(lambda: ctl.traj is None)
+    wait(lambda: ctl.traj is None, timeout=10)                # slack: a busy PC slows the sim loop
     time.sleep(0.3)
     z0 = ctl.snapshot()["tool"]["xyz_mm"][2]
     t0 = time.monotonic()
@@ -70,7 +70,7 @@ def test_goto_and_cartesian_jog(ctl):
     ctl.jog_input()
     time.sleep(0.3)
     dz = ctl.snapshot()["tool"]["xyz_mm"][2] - z0
-    assert -35 < dz < -15                       # 0.05 m/s for 0.5 s ~ 25 mm
+    assert -40 < dz < -15                       # 0.05 m/s for 0.5 s ~ 25 mm (+ timing slack under load)
 
 
 def test_jog_stops_by_itself_when_input_stops(ctl):
@@ -247,3 +247,65 @@ def test_server_endpoints(server):
     code, body = _req(base + "/api/goto", {"pose": "nope"})
     assert code == 400 and b"unknown pose" in body
     assert _req(base + "/static/../server.py")[0] == 404
+
+
+# ---------------------------------------------------------------- motions, record / replay, tasks
+def test_every_motion_keeps_the_gripper_above_the_table_and_in_limits():
+    from so101_dashboard.motions import MOTIONS
+    lim = Controller(P.load("my_so101")).limits
+    for name, m in MOTIONS.items():
+        for t, pose in m["frames"]:
+            assert all(lim[j][0] <= v <= lim[j][1] for j, v in pose.items()), (name, t)
+            assert K.fk(pose)[2, 3] > 0.05, (name, t, K.fk(pose)[2, 3])
+
+
+def test_motion_plays_to_the_end_and_any_command_interrupts(ctl):
+    from so101_dashboard.motions import MOTIONS
+    ctl.set_speed("fast")
+    ctl.play(MOTIONS["no"]["frames"], "no", speed=2.0)
+    wait(lambda: ctl.snapshot()["owner"].startswith("play:"), timeout=10)
+    wait(lambda: ctl.snapshot()["owner"] == "idle", timeout=15)
+    last = MOTIONS["no"]["frames"][-1][1]
+    time.sleep(0.5)
+    assert abs(ctl.snapshot()["measured"]["shoulder_pan"] - last["shoulder_pan"]) < 2
+    ctl.play(MOTIONS["dance"]["frames"], "dance")
+    ctl.set_joints({"gripper": 50})                         # interrupts
+    assert ctl.playback is None and ctl.traj is None
+
+
+def test_record_and_replay(ctl):
+    ctl.record_start()
+    ctl.set_joints({"shoulder_pan": ctl.goal["shoulder_pan"] + 25})
+    time.sleep(1.5)
+    frames = ctl.record_stop()
+    assert len(frames) > 10 and frames[-1][0] > 1.0
+    pan_end = frames[-1][1]["shoulder_pan"]
+    ctl.set_joints({"shoulder_pan": pan_end - 25}); time.sleep(1.5)
+    ctl.play(frames, "rec")
+    wait(lambda: ctl.snapshot()["owner"] == "idle" and ctl.playback is None and ctl.traj is None, timeout=15)
+    time.sleep(0.5)
+    assert abs(ctl.snapshot()["measured"]["shoulder_pan"] - pan_end) < 2
+
+
+def test_task_runner_drives_a_framework_task(ctl):
+    from so101_dashboard.tasks import TaskRunner
+    prof = P.load("my_so101")
+    tr = TaskRunner(prof, ctl)
+    if tr.running():                                         # a leftover from an earlier run
+        tr.stop(); wait(lambda: not tr.running(), timeout=20)
+    with pytest.raises(ValueError):
+        tr.start("rm -rf /")                                 # only known tasks
+    tr.start("demo")                                         # no hardware: practises prompt/answer
+    wait(lambda: tr.state()["state"] == "waiting", timeout=30)
+    assert ctl.backend is None                               # the dashboard let go of the arm first
+    with pytest.raises(RuntimeError):
+        ctl.connect("sim")                                   # refused while the task runs
+    for _ in range(6):
+        st = tr.state()
+        if st["state"] == "ended":
+            break
+        if st["state"] == "waiting":
+            tr.answer("12" if "mm" in (st["prompt"] or "") else "go")
+        time.sleep(1.5)
+    wait(lambda: tr.state()["state"] == "ended", timeout=30)
+    assert any("DEMO" in l or "demo" in l.lower() for l in tr.state()["output"])

@@ -114,6 +114,8 @@ class Controller:
         self.goal = {}
         self.target = {}
         self.traj = None                     # {start, end, t0, dur, name, then}
+        self.playback = None                 # {frames: [(t, {joint: deg})], t0, name, speed} motions / replays
+        self.recording = None                # {t0, frames} while recording
         self.jog = {"joints": {}, "cart": {}, "boost": False, "t": 0.0, "source": ""}
         self._pitch_hold = None
         self._stall = {"since": None, "pos": None}
@@ -147,9 +149,13 @@ class Controller:
             self._note(msg)
 
     # ================================================================ commands (any thread)
+    busy = staticmethod(lambda: None)        # set by the server: why the arm can't be connected now
+
     def connect(self, kind):
         if kind not in ("sim", "real"):
             raise ValueError("mode must be 'sim' or 'real'")
+        if self.busy():
+            raise RuntimeError(f"{self.busy()} - stop it first")
         with self.lock:
             if self.backend is not None or self.state == "connecting":
                 raise RuntimeError("already connected - disconnect first")
@@ -170,7 +176,7 @@ class Controller:
     def emergency_stop(self):
         with self.lock:
             self.estop = True
-            self.traj = None
+            self.traj = self.playback = None
             self.jog["joints"], self.jog["cart"] = {}, {}
             self.owner = "E-STOP"
             if self.state == "parking":
@@ -212,7 +218,7 @@ class Controller:
             if not cart:
                 self._pitch_hold = None
             if joints or cart:
-                self.traj = None
+                self.traj = self.playback = None
                 self.owner = f"manual:{source}"
             self.jog.update(joints=joints, cart=cart, boost=bool(boost), t=time.monotonic(), source=source)
 
@@ -220,7 +226,7 @@ class Controller:
         """Absolute targets (deg / gripper 0-100); the arm moves there at the preset speed."""
         with self.lock:
             self._require_ready(motion=True)
-            self.traj = None
+            self.traj = self.playback = None
             for k, v in values.items():
                 if k in self.limits:
                     self.target[k] = self._clamp(k, float(v))
@@ -255,7 +261,7 @@ class Controller:
         ok = all(self.limits[j][0] <= sol[j] <= self.limits[j][1] for j in K.ARM)
         with self.lock:
             self._require_ready(motion=True)
-            self.traj = None
+            self.traj = self.playback = None
             self.jog["joints"], self.jog["cart"] = {}, {}
             self._hand["t"] = time.monotonic()
             if ok and not still:
@@ -279,7 +285,7 @@ class Controller:
         moved less than MIMIC_HOLD_DEG keep their target (tracking noise)."""
         with self.lock:
             self._require_ready(motion=True)
-            self.traj = None
+            self.traj = self.playback = None
             self.jog["joints"], self.jog["cart"] = {}, {}
             self._hand["t"] = time.monotonic()
             cand = dict(self.target)
@@ -329,10 +335,56 @@ class Controller:
                 g = max(g, floor)
         self.target["gripper"] = g
 
+    # ---------------------------------------------------------------- motions / record & replay
+    def play(self, frames, name="motion", speed=1.0):
+        """Play timed keyframes [[t_s, {joint: deg}], ...]: ease to the first frame, then follow the
+        frames (linear between them; the rate limiter smooths). Any other command interrupts."""
+        frames = sorted(([float(t), {k: float(v) for k, v in f.items() if k in self.limits}] for t, f in frames),
+                        key=lambda x: x[0])
+        if not frames:
+            raise ValueError("nothing to play")
+        speed = max(0.25, min(2.0, float(speed)))
+        with self.lock:
+            self._require_ready(motion=True)
+            self.playback = None
+            first = frames[0][1]
+            delta = max([abs(first[k] - self.goal.get(k, first[k])) for k in first] + [0.0])
+            self._start_traj(first, f"to start of {name}", duration=max(1.0, delta / 40.0), then="play")
+            self._pending_play = {"frames": frames, "name": name, "speed": speed}
+
+    def record_start(self):
+        with self.lock:
+            if self.backend is None:
+                raise RuntimeError("connect an arm first")
+            self.recording = {"t0": time.monotonic(), "frames": []}
+
+    def record_stop(self):
+        with self.lock:
+            rec, self.recording = self.recording, None
+        if not rec or len(rec["frames"]) < 2:
+            raise RuntimeError("nothing recorded (record for at least a second)")
+        return rec["frames"]
+
+    def _playback_target(self):
+        """Lock held. Set targets from the playback frames; returns True when it finished."""
+        pb = self.playback
+        t = (time.monotonic() - pb["t0"]) * pb["speed"]
+        fr = pb["frames"]
+        if t >= fr[-1][0]:
+            self.target.update({k: self._clamp(k, v) for k, v in fr[-1][1].items()})
+            return True
+        i = max(i for i, f in enumerate(fr) if f[0] <= t)
+        (t0, a), (t1, b) = fr[i], fr[i + 1]
+        u = (t - t0) / max(t1 - t0, 1e-6)
+        for k, v in b.items():
+            self.target[k] = self._clamp(k, a.get(k, v) + (v - a.get(k, v)) * u)
+        return False
+
     def goto(self, pose, duration=None):
         """Smooth move to a profile pose name or a {joint: deg} dict (joints left out stay)."""
         with self.lock:
             self._require_ready(motion=True)
+            self.playback = None
             end = self._pose(pose) if isinstance(pose, str) else {k: float(v) for k, v in pose.items()}
             self._start_traj(end, pose if isinstance(pose, str) else "pose", duration=duration)
 
@@ -348,6 +400,11 @@ class Controller:
                 "target": {k: round(v, 2) for k, v in self.target.items()},
                 "telemetry": getattr(self.backend, "telemetry", None),
                 "warnings": list(self.warnings)[-5:],
+                "recording": None if self.recording is None else round(time.monotonic() - self.recording["t0"], 1),
+                "playing": None if self.playback is None else {
+                    "name": self.playback["name"],
+                    "progress": round(min(1.0, (time.monotonic() - self.playback["t0"]) * self.playback["speed"]
+                                          / max(self.playback["frames"][-1][0], 1e-6)), 2)},
                 "traj": None if self.traj is None else {
                     "name": self.traj["name"],
                     "progress": round(min(1.0, (time.monotonic() - self.traj["t0"]) / self.traj["dur"]), 2)},
@@ -448,6 +505,7 @@ class Controller:
                 finally:
                     with self.lock:
                         self.backend, self.state, self.traj = None, "disconnected", None
+                        self.playback = self.recording = None
                         self.measured, self.goal, self.target = {}, {}, {}
                         self.owner = "idle"
             elif op == "torque":
@@ -479,6 +537,9 @@ class Controller:
         then = None
         with self.lock:
             self.measured = m
+            rec = self.recording
+            if rec is not None and (not rec["frames"] or time.monotonic() - rec["t0"] - rec["frames"][-1][0] >= 0.05):
+                rec["frames"].append([round(time.monotonic() - rec["t0"], 3), {k: round(v, 2) for k, v in m.items()}])
             if not self.torque:
                 self.goal, self.target = dict(m), dict(m)      # hand-guiding: follow the arm
                 self._vel = {}
@@ -501,6 +562,13 @@ class Controller:
         if then == "close":
             with self.lock:
                 self._ops.append(("close", None))
+        elif then == "play":
+            with self.lock:
+                pb = getattr(self, "_pending_play", None)
+                if pb is not None:
+                    self.playback = {**pb, "t0": time.monotonic()}
+                    self.owner = f"play:{pb['name']}"
+                    self._pending_play = None
 
     def _update_target(self, dt, m):
         sp = SPEEDS[self.speed]
@@ -515,6 +583,11 @@ class Controller:
                 self.traj = None
                 self.owner = "idle"
                 return tr["then"]
+            return None
+        if self.playback is not None:
+            if self._playback_target():
+                self.playback = None
+                self.owner = "idle"
             return None
         if time.monotonic() - self.jog["t"] > JOG_TIMEOUT_S:
             self.jog["joints"], self.jog["cart"] = {}, {}
@@ -558,7 +631,7 @@ class Controller:
 
     def _rate_limit(self, dt):
         sp = SPEEDS[self.speed]
-        fast = self.traj is not None or bool(self.jog["cart"])     # these are already smooth
+        fast = self.traj is not None or self.playback is not None or bool(self.jog["cart"])   # already smooth
         follow = {"hand": HAND_SPEEDUP, "mimic": MIMIC_SPEEDUP}.get(self.owner)
         for j, tgt in self.target.items():
             rate = sp["grip"] if j == "gripper" else sp["joint"]

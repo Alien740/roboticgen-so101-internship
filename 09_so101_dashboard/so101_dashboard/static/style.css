@@ -155,3 +155,16 @@ kbd { display: inline-block; min-width: 20px; text-align: center; padding: 1px 5
   border-radius: 99px; background: rgba(0, 0, 0, .6); color: #fff; font-size: 14px; font-weight: 600; white-space: nowrap; }
 .hand-msg:empty { display: none; }
 .hand-read { grid-template-columns: repeat(2, auto 1fr); }
+
+/* ---------- framework sessions (draw / tasks / calibrate), motions, record */
+.steps { margin: 0 0 10px 18px; padding: 0; font-size: 13px; line-height: 1.6; }
+.session { margin: 12px 0; }
+.session .prompt { padding: 10px 12px; border-radius: var(--radius); background: var(--chip); font-size: 14px; }
+.session .prompt.waiting { border-left: 4px solid var(--yellow); }
+.session .prompt b { color: var(--heading); }
+.session .row { margin-top: 8px; }
+.session .console { max-height: 200px; font-size: 12px; }
+.drawpad > div { margin: 6px 0; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.drawpad .k { width: 54px; color: var(--muted); font-size: 12px; text-transform: uppercase; }
+.drawpad .slider { display: grid; }
+button.btn:disabled { opacity: .45; cursor: not-allowed; }

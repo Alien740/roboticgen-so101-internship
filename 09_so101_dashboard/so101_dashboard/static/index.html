@@ -60,11 +60,11 @@
       <button class="tab on" data-tab="manual">Manual</button>
       <button class="tab" data-tab="status">Status</button>
       <button class="tab" data-tab="hand">Hand</button>
-      <button class="tab soon" disabled title="subset 2">Motions</button>
-      <button class="tab soon" disabled title="subset 2">Record</button>
-      <button class="tab soon" disabled title="subset 3">Tasks</button>
-      <button class="tab soon" disabled title="subset 4">Draw</button>
-      <button class="tab soon" disabled title="subset 3">Calibrate</button>
+      <button class="tab" data-tab="draw">Draw</button>
+      <button class="tab" data-tab="motions">Motions</button>
+      <button class="tab" data-tab="record">Record</button>
+      <button class="tab" data-tab="tasks">Tasks</button>
+      <button class="tab" data-tab="calibrate">Calibrate</button>
       <button class="tab soon" disabled title="subset 5">AI</button>
     </nav>
 
@@ -119,6 +119,97 @@
           <table class="keys" id="padHelp"></table>
         </div>
       </div>
+    </div>
+
+    <div class="tabpane" id="tab-draw" hidden>
+      <h3>Draw with a pen <small>runs the framework's tested drawing procedure</small></h3>
+      <ol class="steps muted">
+        <li>Tape paper down 22–34 cm in front of the robot; a felt-tip pen, cap off. Speed doesn't matter here.</li>
+        <li><b>Start drawing</b> – the dashboard parks and hands the arm to the drawing procedure.</li>
+        <li><b>Load</b>: lay the pen ACROSS the jaws like a cigarette, tip out 5–7 cm → <b>go</b>; tug-test → <b>go</b>.</li>
+        <li><b>Tilt</b>: does the tip point straight down? <b>go</b> / <b>roll ±10</b> / <b>flip</b>.</li>
+        <li><b>Height</b>: type how high the tip is above the paper (mm), then jog <b>down</b> until it just <b>touch</b>es.</li>
+        <li><b>Draw</b>: <b>Level paper</b> once, then pick a shape. <b>Finish</b> hands the pen back.</li>
+      </ol>
+      <div class="row wrap">
+        <button class="btn primary task-start" data-task="draw">Start drawing</button>
+      </div>
+      <div class="session"></div>
+      <div class="drawpad">
+        <div><span class="k">pen</span>
+          <button class="btn ans" data-a="go">go</button><button class="btn ans" data-a="no">no</button>
+          <button class="btn ans" data-a="roll -10">roll −10</button><button class="btn ans" data-a="roll 10">roll +10</button>
+          <button class="btn ans" data-a="flip">flip</button></div>
+        <div><span class="k">height</span>
+          <button class="btn ans" data-a="down 5">down 5</button><button class="btn ans" data-a="down 3">down 3</button>
+          <button class="btn ans" data-a="down">down 1</button><button class="btn ans" data-a="up">up 1</button>
+          <button class="btn ans" data-a="up 5">up 5</button><button class="btn primary ans" data-a="touch">touch</button></div>
+        <div><span class="k">shape</span>
+          <button class="btn shape" data-s="square">□ square</button><button class="btn shape" data-s="circle">○ circle</button>
+          <button class="btn shape" data-s="star">☆ star</button><button class="btn shape" data-s="spiral">@ spiral</button>
+          <button class="btn shape" data-s="smiley">☺ smiley</button><button class="btn shape" data-s="house">⌂ house</button></div>
+        <div class="slider"><label for="drawSize">Size</label><div class="track"><input type="range" id="drawSize" min="20" max="60" step="5" value="40"></div><output>40 mm</output></div>
+        <div><button class="btn" id="drawLevel">Level paper</button>
+          <button class="btn ans" data-a="probe">Re-measure height</button>
+          <button class="btn warn ans" data-a="quit">Finish</button></div>
+      </div>
+    </div>
+
+    <div class="tabpane" id="tab-motions" hidden>
+      <h3>Motions <small>connect the arm first; any other control interrupts</small></h3>
+      <div class="row wrap" id="motionButtons"></div>
+      <div class="row wrap">
+        <label class="toggle">Speed <select id="motionSpeed" class="btn"><option value="0.5">slow ×0.5</option><option value="1" selected>normal</option><option value="1.5">fast ×1.5</option></select></label>
+        <button class="btn warn" id="motionStop">Stop</button>
+      </div>
+      <p class="muted" id="playState"></p>
+    </div>
+
+    <div class="tabpane" id="tab-record" hidden>
+      <h3>Record &amp; replay <small>teach a movement, then play it back</small></h3>
+      <p class="muted">While recording, move the arm any way you like: the sliders, the hand joystick, or by hand
+        (untick <b>Torque</b> at the top first – hold the arm!). Replays start from the first recorded pose.</p>
+      <div class="row wrap">
+        <input id="recName" class="btn" placeholder="name, e.g. pick-left" maxlength="40">
+        <button class="btn primary" id="recBtn">● Record</button>
+        <span id="recState" class="muted"></span>
+      </div>
+      <h3>Recordings</h3>
+      <div class="row wrap">
+        <label class="toggle">Replay speed <select id="recSpeed" class="btn"><option value="0.5">×0.5</option><option value="1" selected>×1</option><option value="1.5">×1.5</option><option value="2">×2</option></select></label>
+      </div>
+      <table class="motors" id="recList"></table>
+    </div>
+
+    <div class="tabpane" id="tab-tasks" hidden>
+      <h3>Vision tasks <small>need the overhead USB camera and a table calibration (Calibrate tab)</small></h3>
+      <div class="row wrap">
+        <label class="toggle">Trials <input id="taskTrials" class="btn" type="number" min="1" max="20" value="3" style="width:64px"></label>
+      </div>
+      <div class="row wrap">
+        <button class="btn task-start" data-task="pick-place" data-trials="1">Pick &amp; place</button>
+        <button class="btn task-start" data-task="basket" data-trials="1">Cube → basket</button>
+        <button class="btn task-start" data-task="multi">Clear all objects</button>
+        <button class="btn task-start" data-task="stack" data-hover="1">Stack (hover check)</button>
+        <button class="btn task-start" data-task="stack">Stack</button>
+        <button class="btn task-start" data-task="report">Report</button>
+        <button class="btn task-start" data-task="demo">Practice (nothing moves)</button>
+      </div>
+      <div class="session"></div>
+    </div>
+
+    <div class="tabpane" id="tab-calibrate" hidden>
+      <h3>Calibrate <small>the framework's procedures; each tells you what to do</small></h3>
+      <table class="keys">
+        <tr><td><button class="btn task-start" data-task="measure">Measure robot quirks</button></td><td>once per robot: wrist range, gripper, camera latency (moves the arm – clear the table)</td></tr>
+        <tr><td><button class="btn task-start" data-task="calibrate-table">Table (camera → robot)</button></td><td>after the overhead camera moved; ~12 min, you place the cube once</td></tr>
+        <tr><td><button class="btn task-start" data-task="calibrate-camera">Camera lens</button></td><td>optional: hold a printed 9×6 checkerboard in view</td></tr>
+        <tr><td><button class="btn task-start" data-task="calibrate-hsv">Object colour</button>
+          <select id="hsvColor" class="btn"><option>orange</option><option>yellow</option><option>red</option><option>green</option><option>blue</option></select></td><td>new object or lighting</td></tr>
+      </table>
+      <p class="muted">Motor calibration (the joints' zero points) is a terminal step – see CALIBRATE_AND_START.md.
+        Vision steps need the overhead camera and macOS camera permission for the app that runs the dashboard.</p>
+      <div class="session"></div>
     </div>
 
     <div class="tabpane" id="tab-status" hidden>
@@ -260,6 +351,7 @@
 <div id="toast" class="toast" hidden></div>
 <script src="twin.js"></script>
 <script src="app.js"></script>
+<script src="tasks.js"></script>
 <script type="module" src="hand.js"></script>
 </body>
 </html>

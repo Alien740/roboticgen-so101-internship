@@ -74,13 +74,29 @@ Options: `--profile NAME` (framework profile, default `my_so101`), `--port 8000`
 | `so101_dashboard/mesh.py` | builds `static/twin_mesh.json` from the STL parts (already built and committed) |
 | `so101_dashboard/static/` | the page: `index.html`, `app.js` (UI, keyboard, gamepad), `twin.js` (WebGL) |
 
+## More tabs
+
+- **Draw**: runs the framework's tested pen-drawing procedure (`so101 draw`) from the page: load the
+  pen, tilt check, height jog/touch, level the paper, then shape buttons (square, circle, star, spiral,
+  smiley, house) with a size slider.
+- **Tasks** / **Calibrate**: the framework's vision tasks (pick & place, basket, clear all, stack,
+  report, practice) and calibrations (robot quirks, table, camera lens, object colour). The dashboard
+  parks the arm, hands it to the procedure (`so101 --agent ...`), shows each prompt with buttons and an
+  answer box, and refuses to reconnect until it ends. Only known tasks can be started (`tasks.py`).
+- **Motions**: wave hello, nod, shake, dance, bow, chomp - keyframes in `motions.py`, all kept well above
+  the table (tested).
+- **Record**: record any movement (sliders, hand control, or by hand with torque off) and replay it at
+  ×0.5-×2; saved in `runs/<profile>/recordings/`.
+
+Motions and replays run through the controller's playback: eased start, smooth accel/brake, E-STOP and
+limits as everywhere; any other command interrupts them.
+
 ## Roadmap
 
 1. ✅ Core: simulated arm, status, E-STOP, 3D twin, manual / keyboard / gamepad control
-2. Motions (hello, scare, dance) and record / replay
-3. Camera, calibration and the framework's tasks
-4. Drawing board
-5. AI commands (Claude, OpenAI or a local model)
+2. ✅ Hand / arm following, motions, record / replay
+3. ✅ Camera tasks, calibrations and drawing (framework procedures)
+4. AI commands (Claude, OpenAI or a local model)
 
 ## Tests (no hardware)
 

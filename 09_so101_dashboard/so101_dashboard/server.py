@@ -8,7 +8,10 @@ GET  /api/info            profile, OS, ports, joint limits, poses, speed presets
 GET  /api/state           one snapshot
 GET  /api/events          Server-Sent Events: a snapshot every 50 ms (joints, telemetry, link frames)
 GET  /api/twin_mesh       decimated URDF meshes for the 3D twin
-POST /api/<command>       connect, disconnect, estop, reset, speed, torque, jog, set, goto, hand, mimic, doctor
+GET  /api/task            the running framework task (draw, pick-place, calibrations): prompt, output
+GET  /api/library         motions and saved recordings
+POST /api/<command>       connect, disconnect, estop, reset, speed, torque, jog, set, goto, hand, mimic,
+                          motion, record, play, delete_recording, task, doctor
 
 Every POST must carry the header `X-SO101: 1` (browsers cannot add custom headers cross-site
 without a CORS preflight, which this server never grants, so a random web page cannot drive
@@ -35,6 +38,8 @@ from so101.hardware.motors import list_ports
 from so101.profile import FRAMEWORK_ROOT
 from . import mesh
 from .controller import SPEEDS, Controller
+from .motions import MOTIONS
+from .tasks import TaskRunner
 
 STATIC = Path(__file__).resolve().parent / "static"
 EVENT_PERIOD_S = 0.05
@@ -58,6 +63,8 @@ class App:
     def __init__(self, prof, token=None):
         self.prof = prof
         self.ctl = Controller(prof).start()
+        self.tasks = TaskRunner(prof, self.ctl)
+        self.rec_dir = prof.run_dir / "recordings"
         self.token = token
         self._doctor_lock = threading.Lock()
 
@@ -98,11 +105,59 @@ class App:
                                                body.get("roll"), body.get("grip"))}
         elif name == "mimic":
             return {"ok": True, "target": c.mimic_input(body["joints"])}
+        elif name == "motion":
+            m = MOTIONS.get(body["name"])
+            if m is None:
+                raise KeyError(f"unknown motion '{body['name']}'")
+            c.play(m["frames"], m["label"], body.get("speed", 1.0))
+        elif name == "record":
+            if body["op"] == "start":
+                c.record_start()
+            else:
+                frames = c.record_stop()
+                name_ = self._rec_name(body.get("name") or time.strftime("rec-%H%M%S"))
+                self.rec_dir.mkdir(parents=True, exist_ok=True)
+                (self.rec_dir / f"{name_}.json").write_text(json.dumps({"name": name_, "frames": frames}))
+                return {"ok": True, "name": name_, "seconds": frames[-1][0], "frames": len(frames)}
+        elif name == "play":
+            f = self.rec_dir / f"{self._rec_name(body['name'])}.json"
+            if not f.exists():
+                raise KeyError(f"no recording '{body['name']}'")
+            c.play(json.loads(f.read_text())["frames"], body["name"], body.get("speed", 1.0))
+        elif name == "delete_recording":
+            (self.rec_dir / f"{self._rec_name(body['name'])}.json").unlink(missing_ok=True)
+        elif name == "task":
+            op = body["op"]
+            if op == "start":
+                return {"ok": True, **self.tasks.start(body["task"], body.get("options"))}
+            if op == "answer":
+                self.tasks.answer(body["text"])
+            elif op == "stop":
+                self.tasks.stop()
+            else:
+                raise ValueError("task op must be start | answer | stop")
         elif name == "doctor":
             return self.doctor()
         else:
             raise KeyError(f"unknown command '{name}'")
         return {"ok": True}
+
+    @staticmethod
+    def _rec_name(n):
+        n = "".join(ch for ch in str(n) if ch.isalnum() or ch in "-_ ").strip()[:40]
+        if not n:
+            raise ValueError("give the recording a name (letters, digits, - and _)")
+        return n
+
+    def library(self):
+        recs = []
+        for f in sorted(self.rec_dir.glob("*.json")) if self.rec_dir.exists() else []:
+            try:
+                d = json.loads(f.read_text())
+                recs.append({"name": d["name"], "seconds": d["frames"][-1][0]})
+            except Exception:
+                continue
+        return {"motions": {k: v["label"] for k, v in MOTIONS.items()}, "recordings": recs}
 
     def doctor(self):
         """Run `so101 doctor` (read-only) in a subprocess. Needs the serial port free."""
@@ -155,6 +210,10 @@ def make_handler(app: App):
                 return self._send(200, m) if m else self._send(404, {"error": "twin mesh not built"})
             if path == "/api/events":
                 return self._events()
+            if path == "/api/task":
+                return self._send(200, app.tasks.state())
+            if path == "/api/library":
+                return self._send(200, app.library())
             return self._static(path)
 
         def _static(self, path):
