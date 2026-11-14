@@ -36,6 +36,7 @@ import numpy as np
 from .. import kinematics as K
 
 DOWN = np.array((0.0, 0.0, -1.0))
+PEN_NOMINAL = 0.03     # m; hand placement: pen length past the tool point (any value works with a vertical pen)
 
 
 # ------------------------------------------------------------------ shapes (mm, centred on 0,0)
@@ -227,7 +228,7 @@ class Drawer:
     def level(self, size_mm):
         h = size_mm / 2000
         for xy in (self.center + (h, h), self.center + (h, -h), self.center + (-h, h)):
-            tool_z = self.jog_touch(xy, self.length + 0.004)
+            tool_z = self.jog_touch(xy, plane_z(self.coef, xy) + self.length + 0.006)   # start just above the known paper
             tip = K.pen_tip(K.fk(self.arm.angles()), self.pen_dir, self.length)   # after lifting
             self.samples.append((float(xy[0]), float(xy[1]), float(tool_z - self.length)))
             self.sess.event("corner_touch", xy_mm=[round(v * 1000) for v in xy], tip_z_mm=round((tool_z - self.length) * 1000, 1))
@@ -238,7 +239,9 @@ class Drawer:
 
     def hand_place(self):
         """The person places the pen by hand: tip on the paper, pen straight down. Only the gripper
-        keeps torque. Paper height = 0 at that point (same convention as touch_off)."""
+        keeps torque. The paper is wherever the tip was put: it need not be at z = 0 (on some setups
+        the table is 1-2 cm below the base's zero). With the pen vertical the pen length doesn't change
+        where the tool goes, so a nominal length is used and the paper plane is set from that pose."""
         arm, bus = self.arm, self.arm.robot.bus
         joints = [m for m in bus.motors if m != "gripper"]
         while True:
@@ -254,10 +257,6 @@ class Drawer:
                 bus.enable_torque(joints)
             T = K.fk(a)
             tool_z = float(T[2, 3])
-            if tool_z < 0.02:
-                self.sess.say(f"the gripper is only {tool_z*1000:.0f} mm above the paper - the pen must stick out "
-                              "below the jaws; reload it further out or hold it higher, then try again")
-                continue
             pen_dir = T[:3, :3].T @ DOWN                          # this pose = pen straight down
             center = np.array(T[:2, 3], float)
             try:
@@ -267,10 +266,11 @@ class Drawer:
                               "from the robot (about 24-33 cm from the base), then try again")
                 continue
             break
-        self.pen_dir, self.center, self.length = pen_dir, center, tool_z
-        self.samples, self.coef = [(float(center[0]), float(center[1]), 0.0)], [0.0, 0.0, 0.0]
+        paper_z = tool_z - PEN_NOMINAL                            # tip height at the placed point
+        self.pen_dir, self.center, self.length = pen_dir, center, PEN_NOMINAL
+        self.samples, self.coef = [(float(center[0]), float(center[1]), paper_z)], [0.0, 0.0, paper_z]
         self.prof.save_measured("pen", {"pen_dir_tool": [round(float(v), 3) for v in self.pen_dir]})
-        self.sess.event("hand_placed", center_mm=[round(v * 1000) for v in center], pen_length_mm=round(tool_z * 1000, 1))
+        self.sess.event("hand_placed", center_mm=[round(v * 1000) for v in center], tool_z_mm=round(tool_z * 1000, 1))
         self.sess.ask("got it - you can let go of the arm, then 'go' (the pen lifts off the paper)", ["go"])
         self.line((*center, tool_z + self.d["lift"]), speed=0.01)
 
