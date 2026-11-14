@@ -283,7 +283,10 @@ setInterval(() => {
   if (fresh.length) lastEvT = Math.max(...fresh.map(e => e.t || 0));
   let st = null;
   for (const e of fresh) {
-    if (e.type === "drawing") { drawingPicture = e.shape === "picture"; drawT0 = Date.now(); PROG = { done: 0, cur: -1 }; }
+    if (e.type === "drawing") {
+      drawingPicture = e.shape === "picture"; drawT0 = Date.now(); PROG = { done: 0, cur: -1 };
+      if (drawingPicture) { PLAN = null; getPlan().catch(() => {}); }   // re-plan at the spot the pen was just placed
+    }
     else if (e.type === "drawn") drawingPicture = false;
     else if (e.type === "stroke_start" || e.type === "stroke_done") st = e;
   }
