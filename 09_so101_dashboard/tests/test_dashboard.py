@@ -123,7 +123,17 @@ def test_mimic_never_drives_the_tool_into_the_table(ctl):
     assert K.fk({**WORK, **low})[2, 3] < 0
     ctl.mimic_input(low)
     t = ctl.snapshot()["target"]
-    assert K.fk(t)[2, 3] >= 0.005 - 1e-4                                    # stopped at the table
+    assert K.fk(t)[2, 3] >= ctl.table_z - 1e-4                               # stopped at the table
+
+
+def test_table_floor_follows_a_low_rest_pose():
+    c = Controller(P.load("my_so101"))
+    home = {k: float(v) for k, v in P.load("my_so101")["poses"]["home"].items()}
+    c.table_z = min(0.005, K.fk(home)[2, 3] - 0.003)          # what connecting at home sets
+    lean = dict(home, shoulder_lift=home["shoulder_lift"] + 8)  # leaning out from rest lowers the tool a bit
+    assert K.fk(lean)[2, 3] < 0.005
+    out = c._above_table(home, lean)
+    assert out["shoulder_lift"] > home["shoulder_lift"] + 1     # was blocked when the floor was z = 5 mm
 
 
 def test_hand_input_refused_during_estop(ctl):

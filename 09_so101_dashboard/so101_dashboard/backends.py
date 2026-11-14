@@ -14,6 +14,7 @@ Lessons kept from the framework's Arm class:
 """
 from __future__ import annotations
 
+import logging
 import random
 import time
 
@@ -89,6 +90,9 @@ class RealBackend:
         from so101.hardware.arm import Arm
         arm = Arm(self.prof)
         arm.__enter__()                       # retries, fault check, torque limits
+        # lerobot logs a multi-line warning every time max_relative_target trims a step; at 50 Hz
+        # that printing alone halved the control rate. The trim itself is expected and stays.
+        logging.getLogger("lerobot.robots.utils").setLevel(logging.ERROR)
         cap = float(self.prof["motion"]["max_relative"])
         arm.robot.config.max_relative_target = {j: (100.0 if j == "gripper" else cap) for j in JOINTS}
         self.arm, self.port = arm, arm.port

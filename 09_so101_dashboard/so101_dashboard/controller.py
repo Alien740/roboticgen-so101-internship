@@ -42,6 +42,9 @@ SPEEDS = {   # joint deg/s, Cartesian m/s, gripper units/s
 }
 BOOST = 2.0                      # Shift / gamepad Y
 TABLE_Z = 0.005                  # Cartesian jog keeps the tool point this far above the table
+# the real table can sit below the base's z=0 (resting at home the tool reads z = -9..-24 mm): the
+# floor is the lower of TABLE_Z and the tool height when the arm connected (it rests on the table)
+TABLE_MARGIN = 0.003
 STALL_S = 1.0
 GRIP_OPEN_MAX = 95.0             # stop the jaw short of its open end stop (see joint_limits)
 ACCEL_PER_RATE = 4.0             # joints reach full preset speed in 1/4 s and brake to a stop (no jerks)
@@ -116,6 +119,7 @@ class Controller:
         self._stall = {"since": None, "pos": None}
         self._hand = {"t": 0.0, "seed": None, "grip_floor": None}
         self._vel = {}                       # joint velocity of the goal (deg/s), for smooth accel/brake
+        self.table_z = TABLE_Z               # floor for the tool point, see TABLE_MARGIN
         self._misses = 0
         self._ops = collections.deque()
         self.warnings = collections.deque(maxlen=20)
@@ -297,15 +301,16 @@ class Controller:
         that is already low (folded home rests the tool at z<0) may still move up."""
         z = lambda a: K.fk(a)[2, 3]
         zc = z(cand)
-        if zc >= TABLE_Z or zc >= z(cur):
+        floor = self.table_z
+        if zc >= floor or zc >= z(cur):
             return cand
-        if z(cur) < TABLE_Z:
+        if z(cur) < floor:
             self._note("stopped at the table")
             return dict(cur)
         lo, hi = 0.0, 1.0
         for _ in range(8):
             mid = (lo + hi) / 2
-            if z({k: cur[k] + (cand[k] - cur[k]) * mid for k in cand}) >= TABLE_Z:
+            if z({k: cur[k] + (cand[k] - cur[k]) * mid for k in cand}) >= floor:
                 lo = mid
             else:
                 hi = mid
@@ -433,6 +438,7 @@ class Controller:
                 with self.lock:
                     self.backend, self.measured = b, m
                     self.goal, self.target, self._vel = dict(m), dict(m), {}
+                    self.table_z = min(TABLE_Z, K.fk(m)[2, 3] - TABLE_MARGIN)
                     self.state, self.torque, self.estop, self.owner = "ready", True, False, "idle"
             elif op == "close":
                 b = self.backend
