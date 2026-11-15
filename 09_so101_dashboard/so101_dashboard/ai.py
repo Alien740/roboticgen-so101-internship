@@ -359,6 +359,9 @@ class AIAgent:
                 # the arm lands within ~1 cm and the camera map is about as good: a miss usually only
                 # nudges the cube, so look again and retry (each try re-finds it)
                 for attempt in range(3):
+                    if attempt:                               # out of the overhead camera's view, then look again
+                        c.goto("clear_view")
+                        self._settle(timeout=20)
                     text, err = self._pick_up(a["color"])
                     if not err or "missed" not in text:
                         return (text + (f" (try {attempt + 1})" if attempt else "")), err
