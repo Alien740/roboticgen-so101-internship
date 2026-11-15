@@ -13,7 +13,7 @@ from so101 import kinematics as K
 from so101 import profile as P
 from so101_dashboard import mesh
 from so101_dashboard.frames import link_frames
-from so101_dashboard.controller import Controller, cart_step
+from so101_dashboard.controller import HAND_BOX, Controller, cart_step
 from so101_dashboard.server import App, ThreadingHTTPServer, make_handler
 
 WORK = {"shoulder_pan": 0.0, "shoulder_lift": 0.0, "elbow_flex": 0.0, "wrist_flex": 70.0, "wrist_roll": 0.0, "gripper": 0.0}
@@ -98,7 +98,7 @@ def test_hand_input_reaches_target_and_clamps(ctl):
     assert abs(math.hypot(x, y) - 0.22) < 0.01 and abs(z - 0.12) < 0.01
     assert abs(s["measured"]["gripper"] - 60) < 2 and s["owner"] == "hand"
     out = ctl.hand_input(pan=500, r=9, z=-1, pitch=-200, roll=500)
-    assert (out["pan"], out["r"], out["z"], out["pitch"]) == (90.0, 0.33, 0.008, -90.0)
+    assert (out["pan"], out["r"], out["z"], out["pitch"]) == (90.0, 0.33, HAND_BOX["z"][0], -90.0)
     assert ctl.snapshot()["target"]["wrist_roll"] == 75.0
 
 
