@@ -50,7 +50,7 @@ How to work:
 - Call get_state first if you need to know where the arm is.
 - To pick something up: open the gripper, move above it at carrying height pointing down, go down to
   1-2 cm, close the gripper (it stops on the object by itself), go back up to carrying height.
-- To put it down: move above the spot at carrying height, go down, open the gripper, go back up.
+- To put it down: put_down at a spot (reach 17-30 cm, base -60..60 deg).
 - Moves are slow and safe; each tool waits until the arm has arrived.
 - You can see the table through the overhead camera: find_objects lists the cubes/blocks on it with
   their position. To pick one up, prefer pick_up (it finds it, lines the jaws up and grasps it).
@@ -70,6 +70,7 @@ The command is {ROBOT_CLI} (always use this full path; nothing else is allowed):
   {ROBOT_CLI} motion hello|yes|no|dance|bow|chomp
   {ROBOT_CLI} find                                    what the overhead camera sees on the table (and where)
   {ROBOT_CLI} pick red|yellow                         find that object and pick it up (ends lifted, holding it)
+  {ROBOT_CLI} put REACH_CM BASE_DEG                   put what it holds down on the table there
   {ROBOT_CLI} wait SECONDS
 Run one command per Bash call; each waits until the arm stops. Exit code 1 = error: stop and say why."""
 
@@ -113,6 +114,11 @@ TOOLS = [
                     "close, lift to carrying height. Ends holding it (or says it missed).",
      "input_schema": {"type": "object", "additionalProperties": False, "required": ["color"],
                       "properties": {"color": {"type": "string", "enum": ["red", "yellow"]}}}},
+    {"name": "put_down", "strict": True,
+     "description": "Put what the gripper holds down on the table at a spot (reach 17-30 cm, base -60..60 deg): "
+                    "carry height, straight down, open, back up.",
+     "input_schema": {"type": "object", "additionalProperties": False, "required": ["reach_cm", "base_deg"],
+                      "properties": {"reach_cm": {"type": "number"}, "base_deg": {"type": "number"}}}},
     {"name": "wait", "strict": True,
      "description": "Pause for a few seconds (0.5-10).",
      "input_schema": {"type": "object", "additionalProperties": False, "required": ["seconds"],
@@ -323,7 +329,12 @@ class AIAgent:
                 return "ok", False
             if name == "move_gripper_to":
                 r, z = float(a["reach_cm"]) / 100, float(a["height_cm"]) / 100
-                out = c.hand_input(pan=float(a["base_deg"]), r=r, z=z, pitch=PITCH[a["pointing"]])
+                if a["pointing"] == "down":                   # the safe top-down solver (no "closest pose" dive)
+                    pan = math.radians(float(a["base_deg"]))
+                    self._top_down(r * math.cos(pan), r * math.sin(pan), max(z, 0.0), c.goal.get("wrist_roll", 0.0))
+                    out = {"reachable": True}
+                else:
+                    out = c.hand_input(pan=float(a["base_deg"]), r=r, z=z, pitch=PITCH[a["pointing"]])
                 self._settle()
                 s = self._pose_summary()
                 note = "" if out["reachable"] else " (target was beyond reach - stopped at the edge)"
@@ -346,6 +357,17 @@ class AIAgent:
                         if seen else "nothing found on the table"), False
             if name == "pick_up":
                 return self._pick_up(a["color"])
+            if name == "put_down":
+                m = c.prof["motion"]
+                r, pan = float(a["reach_cm"]) / 100, math.radians(float(a["base_deg"]))
+                x, y, roll = r * math.cos(pan), r * math.sin(pan), c.goal.get("wrist_roll", 0.0)
+                self._top_down(x, y, m["travel_z"], roll)
+                self._top_down(x, y, m["approach_z"], roll)
+                self._top_down(x, y, m["grasp_z"] + 0.004, roll)
+                c.set_joints({"gripper": 90.0}, source="ai")
+                self._settle()
+                self._top_down(x, y, m["travel_z"], roll)
+                return f"put it down at reach {r * 100:.0f} cm, base {float(a['base_deg']):.0f} deg", False
             if name == "play_motion":
                 c.play(MOTIONS[a["name"]]["frames"], MOTIONS[a["name"]]["label"])
                 self._settle(timeout=40)
@@ -354,40 +376,49 @@ class AIAgent:
         except (RuntimeError, ValueError, KeyError) as e:
             return f"error: {e}", True
 
+    def _top_down(self, x, y, z, roll, settle=True):
+        """Gripper pointing down at (x, y, z) - the framework's top-down IK (what pick-and-place and the
+        table calibration use), sent as joint targets. Raises if there is no such pose."""
+        c = self.ctl
+        sol = K.ik((x, y, z), dict(c.goal), roll=roll, gripper=c.goal.get("gripper", 70.0))
+        if sol is None:
+            raise RuntimeError(f"no gripper-down pose at reach {math.hypot(x, y) * 100:.0f} cm, height {z * 100:.0f} cm")
+        c.set_joints({k: v for k, v in sol[0].items() if k != "gripper"}, source="ai")
+        if settle:
+            self._settle()
+        return sol[0]
+
     def _pick_up(self, color):
         """Camera -> grasp, with the motion primitives of the framework's pick-and-place: carry height,
         jaws lined up with the object's edges, straight down to the grasp height, close, lift."""
         c, prof = self.ctl, self.ctl.prof
         col = vision.COLORS[color]
-        seen = [o for o in vision.find(self.frame, prof.name, (col,))]
+        seen = vision.find(self.frame, prof.name, (col,))
         if not seen:
             return f"no {color} object seen on the table", True
         o = seen[0]
         obj = next((v for v in prof["objects"].values() if v["color"] == col), {})
         m = prof["motion"]
-        r, pan = math.hypot(o["x"], o["y"]), math.degrees(math.atan2(o["y"], o["x"]))
+        x, y = o["x"], o["y"]
+        r = math.hypot(x, y)
         if not m["reach_min"] <= r <= m["reach_max"]:
             return f"the {o['what']} is at reach {r * 100:.0f} cm - outside {m['reach_min'] * 100:.0f}-{m['reach_max'] * 100:.0f} cm", True
-        c.set_joints({"gripper": 70.0}, source="ai")
+        c.set_joints({"gripper": 90.0}, source="ai")
         self._settle()
-        c.hand_input(pan=pan, r=r, z=m["travel_z"], pitch=-90.0)
-        self._settle()
-        w = prof["wrist"]
-        roll = K.roll_for_axis(dict(c.goal), o["edge_deg"], 90.0, (w["roll_min_ok"], w["roll_max_ok"]))
-        c.hand_input(pan=pan, r=r, z=m["travel_z"], pitch=-90.0, roll=roll)
-        self._settle()
-        c.hand_input(pan=pan, r=r, z=m["approach_z"], pitch=-90.0, roll=roll)
-        self._settle()
-        c.hand_input(pan=pan, r=r, z=obj.get("grasp_z", m["grasp_z"]), pitch=-90.0, roll=roll)
-        self._settle()
-        c.set_joints({"gripper": 0.0}, source="ai")              # the stall guard stops it on the object
+        # wrist roll 0, as in the table calibration: its small offsets (the cube slides a little as the
+        # jaws open) then lie along the closing direction, where the open jaws tolerate them
+        roll = 0.0
+        self._top_down(x, y, m["travel_z"], roll)
+        self._top_down(x, y, m["approach_z"], roll)
+        self._top_down(x, y, obj.get("grasp_z", m["grasp_z"]), roll)
+        time.sleep(0.5)                                         # let the last millimetres settle
+        c.set_joints({"gripper": 0.0}, source="ai")             # the stall guard stops it on the object
         self._settle()
         time.sleep(0.4)
         g = c.measured.get("gripper", 0.0)
-        c.hand_input(pan=pan, r=r, z=m["travel_z"], pitch=-90.0, roll=roll)
-        self._settle()
+        self._top_down(x, y, m["travel_z"], roll)
         held = g >= prof["gripper"]["empty_threshold"]
-        where = f"reach {r * 100:.0f} cm, base {pan:.0f} deg"
+        where = f"reach {r * 100:.0f} cm, base {math.degrees(math.atan2(y, x)):.0f} deg"
         return (f"picked up the {o['what']} at {where} (gripper {g:.0f} %), now lifted" if held
                 else f"closed on nothing at {where} (gripper {g:.0f} %) - missed it"), not held
 

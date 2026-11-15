@@ -8,6 +8,7 @@
     so101-robot motion NAME                hello yes no dance bow chomp
     so101-robot find                       what the overhead camera sees on the table
     so101-robot pick red|yellow            find it and pick it up
+    so101-robot put REACH_CM BASE_DEG      put what it holds down there
     so101-robot wait SECONDS
 
 Each call asks the running dashboard (POST /api/ai_tool) to do one move through its controller -
@@ -46,6 +47,8 @@ def parse(argv):
         return "find_objects", {}
     if cmd == "pick" and len(a) == 1 and a[0] in ("red", "yellow"):
         return "pick_up", {"color": a[0]}
+    if cmd == "put" and len(a) == 2:
+        return "put_down", {"reach_cm": num(0), "base_deg": num(1)}
     if cmd == "wait" and len(a) == 1:
         return "wait", {"seconds": num(0)}
     raise SystemExit(f"bad command: {' '.join(argv)}\n{__doc__}")
