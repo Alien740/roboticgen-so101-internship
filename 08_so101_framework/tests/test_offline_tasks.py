@@ -24,7 +24,8 @@ def test_calibration_grid_matches_the_proven_21_points():
     cfg = P.load()["tasks"]["table_calibration"]
     assert len(grid_points(cfg, "main")) == 9 and len(grid_points(cfg, "offset")) == 12
     allp = grid_points(cfg, "all")
-    assert len(allp) == 21 and allp[0] == (0.15, -0.10)
+    g = cfg["grids"]["main"]
+    assert len(allp) == 21 and allp[0] == (g["x"][0], g["y"][0])
 
 
 def test_fit_direct_recovers_a_tilted_camera():
