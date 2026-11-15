@@ -204,6 +204,9 @@ class AIAgent:
             cmd = [CLAUDE_CLI, "-p", text, "--model", MODEL, "--tools", "Bash",
                    "--allowedTools", f"Bash({ROBOT_CLI}:*)", "--permission-mode", "dontAsk",
                    "--append-system-prompt", CLI_SYSTEM, "--output-format", "stream-json", "--verbose",
+                   # no MCP servers / connectors: with many connected, a resumed chat failed with
+                   # "rendered tool text exceeds 4194304 bytes" (and the robot needs none of them)
+                   "--strict-mcp-config", "--mcp-config", '{"mcpServers": {}}',
                    *(["--session-id", self._session] if first else ["--resume", self._session])]
             wd = Path(self.workdir or Path.home())
             wd.mkdir(parents=True, exist_ok=True)
