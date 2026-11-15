@@ -59,8 +59,22 @@ CAMS.forEach((fig, i) => {
 listCams().then(() => CAMS.forEach((fig, i) => { if (store.get(`cam${i}on`)) startCam(fig, i); }));
 navigator.mediaDevices?.addEventListener?.("devicechange", listCams);
 
-$("#btnShow").onclick = () => { document.body.classList.toggle("show"); store.set("show", document.body.classList.contains("show") ? "1" : ""); };
-if (store.get("show")) document.body.classList.add("show");
+// live cameras stack down the left edge; the 3D view starts right of them so they never cover the arm
+const camBox = $(".cams"), vp = $(".viewport");
+function fitTwin() {
+  const live = CAMS.some(f => f.classList.contains("live"));
+  vp.style.setProperty("--twin-left", live ? `${camBox.offsetLeft + camBox.offsetWidth}px` : "0px");
+}
+new ResizeObserver(fitTwin).observe(camBox);
+new MutationObserver(fitTwin).observe(camBox, { subtree: true, attributeFilter: ["class"] });
+
+function setShow(on) {
+  document.body.classList.toggle("show", on);
+  $("#btnShow").classList.toggle("on", on);
+  store.set("show", on ? "1" : "");
+}
+$("#btnShow").onclick = () => setShow(!document.body.classList.contains("show"));
+setShow(!!store.get("show"));
 
 // ------------------------------------------------------------------ picture -> strokes
 let PIC = null, VEC = null, PLAN = null, CHECKED = false;

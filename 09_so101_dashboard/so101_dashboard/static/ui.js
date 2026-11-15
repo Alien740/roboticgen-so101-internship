@@ -86,19 +86,19 @@ const UI = (() => {
       y: ["Y (hold)", "boost ×2", C.lift], view: ["View", "switch joint ↔ tool mode", C.speed], b: ["B", "E-STOP (always)", C.stop] },
   };
   function buildPad() {
-    const body = "M180 95C140 95 110 110 95 150C70 215 50 300 62 345C72 380 120 392 150 362C175 336 195 302 228 292L372 292"
-      + "C405 302 425 336 450 362C480 392 528 380 538 345C550 300 530 215 505 150C490 110 460 95 420 95C380 92 350 102 300 102C250 102 220 92 180 95Z";
+    const body = "M180 100C140 100 110 112 95 150C70 215 50 300 62 345C72 380 120 392 150 362C175 336 195 302 228 292L372 292"
+      + "C405 302 425 336 450 362C480 392 528 380 538 345C550 300 530 215 505 150C490 112 460 100 420 100C380 97 350 106 300 106C250 106 220 97 180 100Z";
     const btn = (id, x, y, r, label, fill) => `<g class="pb" data-b="${id}"><circle cx="${x}" cy="${y}" r="${r}" fill="${fill}"/>
       <circle class="ring" cx="${x}" cy="${y}" r="${r + 4}"/><text x="${x}" y="${y + 6}" font-size="17">${label}</text></g>`;
-    $("#padWrap").innerHTML = `<svg class="pad-art" viewBox="40 14 520 395" role="img" aria-label="Gamepad map">
+    $("#padWrap").innerHTML = `<svg class="pad-art" viewBox="40 6 520 398" role="img" aria-label="Gamepad map">
       <defs><linearGradient id="gpBody" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1D4762"/><stop offset="1" stop-color="#0B2536"/></linearGradient>
         <radialGradient id="gpStick" cx=".4" cy=".35"><stop offset="0" stop-color="#3a5568"/><stop offset="1" stop-color="#0d1f2b"/></radialGradient></defs>
-      <g class="pb trig" data-b="6"><rect class="ring" x="150" y="26" width="82" height="52" rx="18"/><rect x="154" y="30" width="74" height="44" rx="15" fill="#234b63"/>
-        <rect class="fillv" x="154" y="74" width="74" height="0" rx="6"/><text x="191" y="58" font-size="16">LT</text></g>
-      <g class="pb trig" data-b="7"><rect class="ring" x="368" y="26" width="82" height="52" rx="18"/><rect x="372" y="30" width="74" height="44" rx="15" fill="#234b63"/>
-        <rect class="fillv" x="372" y="74" width="74" height="0" rx="6"/><text x="409" y="58" font-size="16">RT</text></g>
-      <g class="pb" data-b="4"><path class="ring" d="M120 112C130 82 170 72 236 76L240 98C190 96 150 100 120 112Z"/><path d="M124 108C134 86 172 78 234 80L236 96C188 94 152 98 124 108Z" fill="#2a5a77"/><text x="182" y="98" font-size="14">LB</text></g>
-      <g class="pb" data-b="5"><path class="ring" d="M480 112C470 82 430 72 364 76L360 98C410 96 450 100 480 112Z"/><path d="M476 108C466 86 428 78 366 80L364 96C412 94 448 98 476 108Z" fill="#2a5a77"/><text x="418" y="98" font-size="14">RB</text></g>
+      <g class="pb trig" data-b="6"><rect class="ring" x="148" y="14" width="86" height="50" rx="16"/><rect x="152" y="18" width="78" height="42" rx="13" fill="#234b63"/>
+        <rect class="fillv" x="152" y="60" width="78" height="0" rx="6"/><text x="191" y="45" font-size="16">LT</text></g>
+      <g class="pb trig" data-b="7"><rect class="ring" x="366" y="14" width="86" height="50" rx="16"/><rect x="370" y="18" width="78" height="42" rx="13" fill="#234b63"/>
+        <rect class="fillv" x="370" y="60" width="78" height="0" rx="6"/><text x="409" y="45" font-size="16">RT</text></g>
+      <g class="pb bump" data-b="4"><rect class="ring" x="122" y="68" width="124" height="30" rx="13"/><rect x="126" y="72" width="116" height="22" rx="10" fill="#2a5a77"/><text x="184" y="88" font-size="13">LB</text></g>
+      <g class="pb bump" data-b="5"><rect class="ring" x="354" y="68" width="124" height="30" rx="13"/><rect x="358" y="72" width="116" height="22" rx="10" fill="#2a5a77"/><text x="416" y="88" font-size="13">RB</text></g>
       <path d="${body}" fill="url(#gpBody)" stroke="#2f6585" stroke-width="3"/>
       <path d="M150 118C200 108 250 112 300 112C350 112 400 108 450 118" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="3"/>
       <g class="stick" data-s="ls"><circle class="ring" cx="190" cy="172" r="40"/><circle cx="190" cy="172" r="36" fill="#0a1c28"/>
@@ -140,7 +140,7 @@ const UI = (() => {
     $$("#padWrap .pb").forEach(g => g.classList.toggle("down", pr(+g.dataset.b)));
     [6, 7].forEach(i => {
       const v = gp && gp.buttons[i] ? gp.buttons[i].value : 0, r = $(`#padWrap [data-b="${i}"] .fillv`);
-      if (r) { r.setAttribute("height", 44 * v); r.setAttribute("y", 74 - 44 * v); }
+      if (r) { r.setAttribute("height", 42 * v); r.setAttribute("y", 60 - 42 * v); }
     });
     const rows = { lb: pr(4) || pr(5), lt: pr(6) || pr(7), a: pr(0), y: pr(3), view: pr(8), b: pr(1) };
     for (const [k, on] of Object.entries(rows)) $(`#padHelp tr[data-k="${k}"]`)?.classList.toggle("down", on);
@@ -172,7 +172,12 @@ const UI = (() => {
     }
     // labels in a tidy column right of the arm, top to bottom in the order of the joints on screen
     const placed = pts.filter(q => q.p).sort((a, b) => a.p[1] - b.p[1]);
-    const colX = Math.max(...placed.map(q => q.p[0])) + 90, H = box.clientHeight;
+    // labels go right of the arm, or left of it when they would run off the edge
+    const W = box.clientWidth, H = box.clientHeight, BW = 156;
+    const maxX = Math.max(...placed.map(q => q.p[0])), minX = Math.min(...placed.map(q => q.p[0]));
+    const roomR = W - 10 - BW - maxX, roomL = minX - 10 - BW;
+    const left = roomR < 40 && roomL > roomR;
+    const colX = left ? minX - Math.min(90, roomL) - BW : Math.min(maxX + Math.min(90, Math.max(40, roomR)), W - 10 - BW);
     const mid = placed.reduce((s, q) => s + q.p[1], 0) / (placed.length || 1);
     let y0 = Math.max(70, Math.min(H - placed.length * 46 - 20, mid - (placed.length - 1) * 23));
     placed.forEach((q, i) => { q.y = y0 + i * 46; q.dx = colX - q.p[0]; });
@@ -180,10 +185,10 @@ const UI = (() => {
       const el = box.querySelector(`[data-j="${j}"]`); if (!el) continue;
       if (!p) { el.style.opacity = 0; continue; }
       // the dot sits on the joint, a leader line runs to its label in the column
-      const dy = y - p[1], len = Math.hypot(dx, dy);
+      const dy = y - p[1], lx = left ? dx + BW : dx, len = Math.hypot(lx, dy);
       el.style.opacity = 1; el.style.left = `${p[0]}px`; el.style.top = `${p[1]}px`;
       const bx = el.querySelector(".box"); bx.style.top = `${dy}px`; bx.style.left = `${dx}px`;
-      const ln = el.querySelector(".ln"); ln.style.width = `${len}px`; ln.style.transform = `rotate(${Math.atan2(dy, dx)}rad)`;
+      const ln = el.querySelector(".ln"); ln.style.width = `${len}px`; ln.style.transform = `rotate(${Math.atan2(dy, lx)}rad)`;
       const t = S.telemetry ? S.telemetry[j] : null, m = S.measured[j];
       const load = t && t.load !== null ? Math.min(100, Math.abs(t.load) / 10) : 0;
       el.querySelector(".v").textContent = m === undefined ? "–" : j === "gripper" ? `${fmt(m, 0)}% open` : `${fmt(m, 0)}°`;

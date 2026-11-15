@@ -134,7 +134,8 @@ function render() {
     $(`#out-${j}`).textContent = m === undefined ? "–" : fmt(m) + (j === "gripper" ? "" : "°");
     const [lo, hi] = INFO.limits[j], tick = inp.parentElement.querySelector(".meas");
     tick.style.display = m === undefined ? "none" : "";
-    if (m !== undefined) tick.style.left = `calc(${((m - lo) / (hi - lo)) * 100}% - 1px)`;
+    // the range thumb (20 px) travels 10 px in from each end, so the dot does too
+    if (m !== undefined) tick.style.left = `calc(10px + (100% - 20px) * ${Math.min(1, Math.max(0, (m - lo) / (hi - lo)))} - 5px)`;
   }
 
   if (S.tool) {

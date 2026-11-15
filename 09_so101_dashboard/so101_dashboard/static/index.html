@@ -138,25 +138,22 @@
           <h3>Joints <small>the dot shows where the motor really is</small></h3>
           <div id="sliders" class="sliders"></div>
         </div>
-        <div class="sect two">
-          <div>
-            <h3>Gripper</h3>
-            <div class="row"><button class="btn" id="gripOpen">Open</button><button class="btn" id="gripClose">Close</button></div>
-            <p class="hint">A stalled grip is eased off by itself to protect the motor.</p>
-          </div>
-          <div>
-            <h3>Move the tool <small>hold to move in straight lines</small></h3>
-            <div class="cartpad">
-              <div class="pad">
-                <span></span><button class="jog" data-cart="x:1" title="Forward">▲<small>fwd</small></button><span></span>
-                <button class="jog" data-cart="y:1" title="Left">◀<small>left</small></button><span class="pad-c">XY</span><button class="jog" data-cart="y:-1" title="Right">▶<small>right</small></button>
-                <span></span><button class="jog" data-cart="x:-1" title="Back">▼<small>back</small></button><span></span>
-              </div>
-              <div class="pad z">
-                <button class="jog" data-cart="z:1" title="Up">▲<small>up</small></button>
-                <span class="pad-c">Z</span>
-                <button class="jog" data-cart="z:-1" title="Down">▼<small>down</small></button>
-              </div>
+        <div class="sect">
+          <h3>Gripper <small>a stalled grip is eased off by itself to protect the motor</small></h3>
+          <div class="row grip-row"><button class="btn" id="gripOpen">Open</button><button class="btn" id="gripClose">Close</button></div>
+        </div>
+        <div class="sect">
+          <h3>Move the tool <small>hold to move in straight lines</small></h3>
+          <div class="cartpad">
+            <div class="pad">
+              <span></span><button class="jog" data-cart="x:1" title="Forward">▲<small>fwd</small></button><span></span>
+              <button class="jog" data-cart="y:1" title="Left">◀<small>left</small></button><span class="pad-c">XY</span><button class="jog" data-cart="y:-1" title="Right">▶<small>right</small></button>
+              <span></span><button class="jog" data-cart="x:-1" title="Back">▼<small>back</small></button><span></span>
+            </div>
+            <div class="pad z">
+              <button class="jog" data-cart="z:1" title="Up">▲<small>up</small></button>
+              <span class="pad-c">Z</span>
+              <button class="jog" data-cart="z:-1" title="Down">▼<small>down</small></button>
             </div>
           </div>
         </div>
