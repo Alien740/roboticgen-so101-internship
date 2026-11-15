@@ -224,7 +224,10 @@ const KEY_JOINTS = { q: ["shoulder_pan", -1], e: ["shoulder_pan", 1], w: ["shoul
   r: ["wrist_roll", -1], f: ["wrist_roll", 1], t: ["gripper", -1], g: ["gripper", 1] };
 const KEY_CART = { ArrowUp: ["x", 1], ArrowDown: ["x", -1], ArrowLeft: ["y", 1], ArrowRight: ["y", -1],
   PageUp: ["z", 1], PageDown: ["z", -1] };
-const typing = e => e.target.matches && e.target.matches("input[type=text], input[type=number], textarea");
+// any text field (an <input> without a type attribute is a text field too): keys type, they don't drive the arm
+const typing = e => { const t = e.target;
+  return !!t && (t.isContentEditable || t.tagName === "TEXTAREA" || t.tagName === "SELECT"
+    || (t.tagName === "INPUT" && !["range", "checkbox", "radio", "button", "submit"].includes(t.type))); };
 
 window.addEventListener("keydown", e => {
   if (typing(e)) return;

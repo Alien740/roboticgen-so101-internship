@@ -11,6 +11,7 @@ GET  /api/twin_mesh       decimated URDF meshes for the 3D twin
 GET  /api/task            the running framework task (draw, pick-place, calibrations): prompt, output
 GET  /api/library         motions and saved recordings
 GET  /api/ai              the AI tab's transcript (Claude plans moves with the controller's tools)
+GET  /api/frame           the overhead camera's latest frame (JPEG; the page sends it: POST /api/frame)
 POST /api/<command>       connect, disconnect, estop, reset, speed, torque, jog, set, goto, hand, mimic,
                           motion, record, play, delete_recording, task, save_drawing, ai, ai_tool, doctor,
                           vectorize (picture -> strokes), draw_plan (dry run of a drawing for the 3D twin)
@@ -71,6 +72,8 @@ class App:
         self.ai.workdir = prof.run_dir / "ai-chat"
         self.rec_dir = prof.run_dir / "recordings"
         self.token = token
+        self.frame = (0.0, None)              # (time, JPEG bytes): the overhead camera, sent by the page
+        self.ai.frame = lambda: self.frame
         self._doctor_lock = threading.Lock()
 
     def info(self):
@@ -271,6 +274,17 @@ def make_handler(app: App):
                 return self._send(200, app.tasks.state())
             if path == "/api/library":
                 return self._send(200, app.library())
+            if path == "/api/frame":                  # the overhead camera, for the framework's vision
+                t, data = app.frame
+                if data is None or time.time() - t > 5.0:
+                    return self._send(404, {"error": "no camera frames - open the dashboard page with Camera 1 on"})
+                self.send_response(200)
+                self.send_header("Content-Type", "image/jpeg")
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("X-Frame-Time", repr(t))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                return self.wfile.write(data)
             if path == "/api/ai":
                 return self._send(200, app.ai.state())
             return self._static(path)
@@ -312,6 +326,11 @@ def make_handler(app: App):
                 return self._send(404, {"error": "not found"})
             try:
                 n = int(self.headers.get("Content-Length") or 0)
+                if path == "/api/frame":              # JPEG from the page's overhead camera
+                    if not 0 < n <= 2_000_000:
+                        raise ValueError("frame must be a JPEG under 2 MB")
+                    app.frame = (time.time(), self.rfile.read(n))
+                    return self._send(200, {"ok": True})
                 body = json.loads(self.rfile.read(n) or b"{}") if n else {}
                 return self._send(200, app.command(path[len("/api/"):], body))
             except (KeyError, ValueError, RuntimeError, TypeError) as e:

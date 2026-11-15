@@ -9,9 +9,9 @@ robot:
   supply_voltage: 5.0          # 5 V kit: weak gripper, see gripper section
 
 camera:
-  index: auto                  # "auto" = first live, non-black, non-virtual camera; Windows re-numbers on replug
+  index: dashboard             # frames from the dashboard page (the browser has the Mac's cameras); "auto" = OpenCV
   width: 640
-  height: 480
+  height: 360                  # the page sends 640 px wide frames at the camera's own aspect (16:9)
   settle_s: 0.15               # wait after a move before trusting a frame
   max_shift_px: 3.0            # camera bumped more than this since calibration -> refuse vision tasks
 

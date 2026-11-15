@@ -59,6 +59,22 @@ CAMS.forEach((fig, i) => {
 listCams().then(() => CAMS.forEach((fig, i) => { if (store.get(`cam${i}on`)) startCam(fig, i); }));
 navigator.mediaDevices?.addEventListener?.("devicechange", listCams);
 
+// Camera 1 (the overhead camera) is also the robot's eyes: its frames go to the server 4x a second, for
+// the framework's vision (table calibration, pick and place) and the AI tab's find / pick-up tools
+const frameCanvas = document.createElement("canvas");
+let frameBusy = false;
+setInterval(async () => {
+  const v = CAMS[0] && CAMS[0].classList.contains("live") && CAMS[0].querySelector("video");
+  if (!v || !v.videoWidth || frameBusy) return;
+  frameBusy = true;
+  try {
+    frameCanvas.width = 640; frameCanvas.height = Math.round(640 * v.videoHeight / v.videoWidth);
+    frameCanvas.getContext("2d").drawImage(v, 0, 0, frameCanvas.width, frameCanvas.height);
+    const jpeg = await new Promise(r => frameCanvas.toBlob(r, "image/jpeg", 0.9));
+    await fetch("/api/frame", { method: "POST", headers: { ...HDR, "X-SO101": "1", "Content-Type": "image/jpeg" }, body: jpeg });
+  } catch (_) { /* server restarting */ } finally { frameBusy = false; }
+}, 250);
+
 // live cameras stack down the left edge; the 3D view starts right of them so they never cover the arm
 const camBox = $(".cams"), vp = $(".viewport");
 function fitTwin() {

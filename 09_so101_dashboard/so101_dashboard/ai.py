@@ -26,6 +26,7 @@ from pathlib import Path
 
 from so101 import kinematics as K
 
+from . import vision
 from .motions import MOTIONS
 
 MODEL = "claude-opus-5-5"
@@ -51,7 +52,9 @@ How to work:
   1-2 cm, close the gripper (it stops on the object by itself), go back up to carrying height.
 - To put it down: move above the spot at carrying height, go down, open the gripper, go back up.
 - Moves are slow and safe; each tool waits until the arm has arrived.
-- You cannot see. If the user did not say where an object is, ask them (reach, side) instead of guessing.
+- You can see the table through the overhead camera: find_objects lists the cubes/blocks on it with
+  their position. To pick one up, prefer pick_up (it finds it, lines the jaws up and grasps it).
+  If find_objects sees nothing, say so - don't guess a position.
 - Pen drawing is done in the Draw tab, not with these tools - say so if asked to draw.
 - If a tool returns an error (E-STOP, out of reach, not connected), stop and tell the user plainly.
 Keep replies short: one or two sentences saying what you did or what you need."""
@@ -65,6 +68,8 @@ The command is {ROBOT_CLI} (always use this full path; nothing else is allowed):
   {ROBOT_CLI} pose home|clear_view|ready
   {ROBOT_CLI} joint NAME DEGREES                       shoulder_pan shoulder_lift elbow_flex wrist_flex wrist_roll
   {ROBOT_CLI} motion hello|yes|no|dance|bow|chomp
+  {ROBOT_CLI} find                                    what the overhead camera sees on the table (and where)
+  {ROBOT_CLI} pick red|yellow                         find that object and pick it up (ends lifted, holding it)
   {ROBOT_CLI} wait SECONDS
 Run one command per Bash call; each waits until the arm stops. Exit code 1 = error: stop and say why."""
 
@@ -100,6 +105,14 @@ TOOLS = [
      "description": "Play a fun pre-programmed motion. Waits until it ends.",
      "input_schema": {"type": "object", "additionalProperties": False, "required": ["name"],
                       "properties": {"name": {"type": "string", "enum": list(MOTIONS)}}}},
+    {"name": "find_objects", "strict": True,
+     "description": "Look at the table with the overhead camera: the cubes/blocks it sees, with reach_cm, base_deg.",
+     "input_schema": {"type": "object", "additionalProperties": False, "properties": {}}},
+    {"name": "pick_up", "strict": True,
+     "description": "Find an object with the camera and pick it up: open, move above it, line the jaws up, go down, "
+                    "close, lift to carrying height. Ends holding it (or says it missed).",
+     "input_schema": {"type": "object", "additionalProperties": False, "required": ["color"],
+                      "properties": {"color": {"type": "string", "enum": ["red", "yellow"]}}}},
     {"name": "wait", "strict": True,
      "description": "Pause for a few seconds (0.5-10).",
      "input_schema": {"type": "object", "additionalProperties": False, "required": ["seconds"],
@@ -119,6 +132,7 @@ class AIAgent:
         self._proc = None                    # claude-code backend: the running `claude -p`
         self._session = None                 # claude-code backend: conversation id to resume
         self.workdir = None                  # set by the server: where Claude Code keeps this chat
+        self.frame = lambda: (0.0, None)     # set by the server: the overhead camera's latest JPEG
 
     # ------------------------------------------------------------------ page API
     def backend(self):
@@ -326,6 +340,12 @@ class AIAgent:
                 c.set_joints({a["joint"]: float(a["degrees"])}, source="ai")
                 self._settle()
                 return f"{a['joint']} at {c.measured.get(a['joint'], 0):.0f} deg", False
+            if name == "find_objects":
+                seen = vision.find(self.frame, self.ctl.prof.name)
+                return (json.dumps([{k: o[k] for k in ("what", "reach_cm", "base_deg")} for o in seen])
+                        if seen else "nothing found on the table"), False
+            if name == "pick_up":
+                return self._pick_up(a["color"])
             if name == "play_motion":
                 c.play(MOTIONS[a["name"]]["frames"], MOTIONS[a["name"]]["label"])
                 self._settle(timeout=40)
@@ -333,6 +353,43 @@ class AIAgent:
             return f"unknown tool {name}", True
         except (RuntimeError, ValueError, KeyError) as e:
             return f"error: {e}", True
+
+    def _pick_up(self, color):
+        """Camera -> grasp, with the motion primitives of the framework's pick-and-place: carry height,
+        jaws lined up with the object's edges, straight down to the grasp height, close, lift."""
+        c, prof = self.ctl, self.ctl.prof
+        col = vision.COLORS[color]
+        seen = [o for o in vision.find(self.frame, prof.name, (col,))]
+        if not seen:
+            return f"no {color} object seen on the table", True
+        o = seen[0]
+        obj = next((v for v in prof["objects"].values() if v["color"] == col), {})
+        m = prof["motion"]
+        r, pan = math.hypot(o["x"], o["y"]), math.degrees(math.atan2(o["y"], o["x"]))
+        if not m["reach_min"] <= r <= m["reach_max"]:
+            return f"the {o['what']} is at reach {r * 100:.0f} cm - outside {m['reach_min'] * 100:.0f}-{m['reach_max'] * 100:.0f} cm", True
+        c.set_joints({"gripper": 70.0}, source="ai")
+        self._settle()
+        c.hand_input(pan=pan, r=r, z=m["travel_z"], pitch=-90.0)
+        self._settle()
+        w = prof["wrist"]
+        roll = K.roll_for_axis(dict(c.goal), o["edge_deg"], 90.0, (w["roll_min_ok"], w["roll_max_ok"]))
+        c.hand_input(pan=pan, r=r, z=m["travel_z"], pitch=-90.0, roll=roll)
+        self._settle()
+        c.hand_input(pan=pan, r=r, z=m["approach_z"], pitch=-90.0, roll=roll)
+        self._settle()
+        c.hand_input(pan=pan, r=r, z=obj.get("grasp_z", m["grasp_z"]), pitch=-90.0, roll=roll)
+        self._settle()
+        c.set_joints({"gripper": 0.0}, source="ai")              # the stall guard stops it on the object
+        self._settle()
+        time.sleep(0.4)
+        g = c.measured.get("gripper", 0.0)
+        c.hand_input(pan=pan, r=r, z=m["travel_z"], pitch=-90.0, roll=roll)
+        self._settle()
+        held = g >= prof["gripper"]["empty_threshold"]
+        where = f"reach {r * 100:.0f} cm, base {pan:.0f} deg"
+        return (f"picked up the {o['what']} at {where} (gripper {g:.0f} %), now lifted" if held
+                else f"closed on nothing at {where} (gripper {g:.0f} %) - missed it"), not held
 
     def _settle(self, timeout=SETTLE_TIMEOUT_S):
         """Wait until the arm stops: no trajectory/playback and the goal has reached the target."""
