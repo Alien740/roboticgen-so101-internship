@@ -63,7 +63,10 @@ How to work:
   works); tug check -> "go"; "HOLD THE ARM" -> "auto" (no hands); "pen over the drawing spot" ->
   "last" (lowers onto the paper at the height measured before); at the menu -> draw_make (a shape name
   or "picture"; size_mm 0 = the biggest clean size on the sheet). If draw_make says it's still
-  drawing, call draw_wait. Afterwards draw_answer "aside" so the camera sees the sheet. To finish:
+  drawing, call draw_wait. Prefer big drawings (size_mm 0 = about 130 mm): the arm lands within ~5 mm,
+  so shapes under ~100 mm come out distorted - if the user asks for a small one, say so and suggest
+  bigger. Afterwards draw_answer "aside" so the camera sees the sheet; before another drawing answer
+  "go" (it brings the arm back over the paper). To finish:
   draw_answer "quit" - it then asks someone to hold the pen; tell the user, and when they confirm,
   draw_answer "go" to open the jaws (the arm then reconnects to the dashboard).
   Answer only the question the program is asking right now (the user may also press buttons in the

@@ -502,6 +502,9 @@ class Drawer:
         camera ('down', 'down 5', 'up', 'touch')."""
         ps = pen_setup(self.prof)
         self.pen_dir, self.center, self.length = ps["pen_dir"], ps["center"], PEN_NOMINAL
+        if ps["angles"]:                                          # allow the roll the pen was placed with
+            roll = ps["angles"]["wrist_roll"]
+            self.roll_lim = (min(self.roll_lim[0], roll - 10), max(self.roll_lim[1], roll + 10))
         cx, cy = self.center
         z = ps["paper_z"] + 0.04                                  # 4 cm above where the paper was last time
         self.goto((cx, cy, z + 0.03), duration=3.0, tip=True)
@@ -604,8 +607,12 @@ def main(a, prof, sess):
         dr = Drawer(arm, prof, sess)
         dr.load_pen()
         dr.hand_place()
+        back = None                                               # pose before 'aside': return there first
         while True:
             try:
+                if back:
+                    arm.move_joints(back, duration=2.5)
+                    back = None
                 dr.goto((*dr.center, plane_z(dr.coef, dr.center) + dr.length + 0.04), duration=1.5)
             except RuntimeError as e:                              # stay at the menu instead of crashing
                 sess.event("error", message=str(e)); sess.say(f"ERROR {e}")
@@ -638,7 +645,9 @@ def main(a, prof, sess):
                     dr.touch_off()
                 elif c[0] == "aside":                           # out of the overhead camera's view, pen kept
                     dr.lift_clear()
+                    back = {f"{k}.pos": v for k, v in arm.angles().items() if k in K.J5}
                     arm.park(keep_roll=True)
+                    sess.ask("arm is out of the camera's view - 'go' to bring it back over the paper", ["go"])
                 else:
                     sess.say("unknown command")
             except Stopped:
