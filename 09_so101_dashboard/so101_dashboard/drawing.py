@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import base64
+import json
 
 from so101 import profile
 from so101.tasks import draw as D
@@ -22,7 +23,7 @@ MAX_KEYFRAMES = 600
 PEN_GRIPPER = 8.0                         # gripper % while holding the pen, for the twin
 
 
-def vectorize(body):
+def vectorize(body, prof=None):
     data = body["image"]
     if "," in data[:100]:
         data = data.split(",", 1)[1]                              # data URL -> base64
@@ -37,8 +38,12 @@ def vectorize(body):
     st = r["strokes"]
     if not st:
         raise ValueError("no lines found in this picture - try 'photo' mode or more detail")
-    return {"strokes": st, "width": r["width"], "height": r["height"],
-            "uv": [[[-x, -y] for x, y in s] for s in st],         # picture -> u (left), v (away)
+    uv = [[[-x, -y] for x, y in s] for s in st]                   # picture -> u (left), v (away)
+    if prof is not None:                                          # the AI tab can draw "the picture" too
+        d = prof.run_dir / "drawings"
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "upload.json").write_text(json.dumps({"strokes": uv}))
+    return {"strokes": st, "width": r["width"], "height": r["height"], "uv": uv,
             "stats": V.stats(st, size, r["width"], r["height"])}
 
 

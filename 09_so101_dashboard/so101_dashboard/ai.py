@@ -55,9 +55,22 @@ How to work:
 - You can see the table through the overhead camera: find_objects lists the cubes/blocks on it with
   their position. To pick one up, use pick_up (it finds it, grasps it and retries by itself).
   If find_objects sees nothing, say so - don't guess a position.
-- Pen drawing is done in the Draw tab, not with these tools - say so if asked to draw.
+- Pen drawing on the A4 sheet (shapes, or the picture uploaded in the Draw tab): you run the drawing
+  program step by step. draw_start starts it; it opens the gripper and asks for the pen. A robot can't
+  put a pen in its own jaws: tell the user to lay the pen ACROSS the open jaws (tip out 5-7 cm) and to
+  tell you when it's in, then end your turn. When they confirm, answer the program's questions:
+  pen in -> draw_answer "go"; jaws closed below 4 % ("too thin") -> "ignore" (this pen is thin but
+  works); tug check -> "go"; "HOLD THE ARM" -> "auto" (no hands); "pen over the drawing spot" ->
+  "last" (lowers onto the paper at the height measured before); at the menu -> draw_make (a shape name
+  or "picture"; size_mm 0 = the biggest clean size on the sheet). If draw_make says it's still
+  drawing, call draw_wait. Afterwards draw_answer "aside" so the camera sees the sheet. To finish:
+  draw_answer "quit" - it then asks someone to hold the pen; tell the user, and when they confirm,
+  draw_answer "go" to open the jaws (the arm then reconnects to the dashboard).
+  While the drawing program runs, the other robot tools are unavailable.
 - If a tool returns an error (E-STOP, out of reach, not connected), stop and tell the user plainly.
-Keep replies short: one or two sentences saying what you did or what you need."""
+Before each tool call, write one short line (under 12 words) saying what you are about to do and
+why - the user sees it as your thinking. Keep the final reply short: one or two sentences saying what
+you did or what you need."""
 
 CLI_SYSTEM = SYSTEM.replace("through tools.", "with ONE shell command, run through the Bash tool:") + f"""
 
@@ -71,6 +84,10 @@ The command is {ROBOT_CLI} (always use this full path; nothing else is allowed):
   {ROBOT_CLI} find                                    what the overhead camera sees on the table (and where)
   {ROBOT_CLI} pick red|yellow                         find that object and pick it up (ends lifted, holding it)
   {ROBOT_CLI} put REACH_CM BASE_DEG                   put what it holds down on the table there
+  {ROBOT_CLI} draw start                              start the pen-drawing program (then answer its questions)
+  {ROBOT_CLI} draw answer WORDS                       answer it (go, ignore, auto, last, aside, quit, ...)
+  {ROBOT_CLI} draw make WHAT [SIZE_MM]                at its menu: draw a shape (circle square star spiral smiley house) or "picture"; size 0 = biggest clean
+  {ROBOT_CLI} draw wait                               keep waiting while it draws
   {ROBOT_CLI} wait SECONDS
 Run one command per Bash call; each waits until the arm stops. Exit code 1 = error: stop and say why."""
 
@@ -119,6 +136,23 @@ TOOLS = [
                     "carry height, straight down, open, back up.",
      "input_schema": {"type": "object", "additionalProperties": False, "required": ["reach_cm", "base_deg"],
                       "properties": {"reach_cm": {"type": "number"}, "base_deg": {"type": "number"}}}},
+    {"name": "draw_start", "strict": True,
+     "description": "Start the pen-drawing program (it parks the arm and opens the gripper for the pen). "
+                    "Returns what it asks.",
+     "input_schema": {"type": "object", "additionalProperties": False, "properties": {}}},
+    {"name": "draw_answer", "strict": True,
+     "description": "Answer the drawing program's current question (go, ignore, auto, last, aside, quit, ...). "
+                    "Returns its next question and what happened.",
+     "input_schema": {"type": "object", "additionalProperties": False, "required": ["text"],
+                      "properties": {"text": {"type": "string"}}}},
+    {"name": "draw_make", "strict": True,
+     "description": "At the drawing program's menu: draw a shape (circle, square, star, spiral, smiley, house) or "
+                    "'picture' (the Draw tab's uploaded picture). size_mm 0 = the biggest clean size on the sheet.",
+     "input_schema": {"type": "object", "additionalProperties": False, "required": ["what", "size_mm"],
+                      "properties": {"what": {"type": "string"}, "size_mm": {"type": "number"}}}},
+    {"name": "draw_wait", "strict": True,
+     "description": "Keep waiting while the drawing program works (up to ~100 s per call).",
+     "input_schema": {"type": "object", "additionalProperties": False, "properties": {}}},
     {"name": "wait", "strict": True,
      "description": "Pause for a few seconds (0.5-10).",
      "input_schema": {"type": "object", "additionalProperties": False, "required": ["seconds"],
@@ -139,6 +173,7 @@ class AIAgent:
         self._session = None                 # claude-code backend: conversation id to resume
         self.workdir = None                  # set by the server: where Claude Code keeps this chat
         self.frame = lambda: (0.0, None)     # set by the server: the overhead camera's latest JPEG
+        self.draw = None                     # set by the server: pen drawing through the framework (ai_draw)
 
     # ------------------------------------------------------------------ page API
     def backend(self):
@@ -222,7 +257,9 @@ class AIAgent:
                 if t == "assistant":
                     for b in d["message"]["content"]:
                         if b.get("type") == "text" and b["text"].strip():
-                            self.log.append({"role": "assistant", "text": b["text"].strip()})
+                            self.log.append({"role": "thinking", "text": b["text"].strip()})
+                        elif b.get("type") == "thinking" and (b.get("thinking") or "").strip():
+                            self.log.append({"role": "thinking", "text": b["thinking"].strip()[:400]})
                         elif b.get("type") == "tool_use":
                             c = str(b.get("input", {}).get("command", "")).replace(ROBOT_CLI, "robot")
                             self.log.append({"role": "tool", "text": f"{c} …"})
@@ -238,6 +275,7 @@ class AIAgent:
                     if not ok:
                         self.log.append({"role": "error", "text": str(d.get("result") or d.get("subtype"))[:300]})
             self._proc.wait()
+            self._final_answer()
             if self._stop.is_set():
                 self.log.append({"role": "error", "text": "Stopped."})
             elif not ok and self._proc.returncode:
@@ -267,7 +305,7 @@ class AIAgent:
                 self.messages.append({"role": "assistant", "content": content})
                 for b in content:
                     if b.type == "text" and b.text.strip():
-                        self.log.append({"role": "assistant", "text": b.text.strip()})
+                        self.log.append({"role": "thinking", "text": b.text.strip()})
                 if resp.stop_reason == "refusal":
                     self.log.append({"role": "error", "text": "Claude declined this request."})
                     self.messages.pop(); break
@@ -297,6 +335,7 @@ class AIAgent:
         except Exception as e:
             self.log.append({"role": "error", "text": f"{type(e).__name__}: {e}"})
         finally:
+            self._final_answer()
             self._tidy()
             self.busy = False
 
@@ -311,6 +350,17 @@ class AIAgent:
             if self.messages and self.messages[-1]["role"] == "assistant" and any(
                     getattr(b, "type", None) == "tool_use" for b in self.messages[-1]["content"]):
                 self.messages.pop()
+
+    def _final_answer(self):
+        """Texts written along the way are shown as thinking; the last one of the run is the answer."""
+        for m in reversed(self.log):
+            if m["role"] == "user":
+                return
+            if m["role"] == "thinking":
+                m["role"] = "assistant"
+                return
+            if m["role"] in ("tool", "error"):
+                return
 
     def _stopped(self):
         if self._stop.is_set() or self.ctl.estop:
@@ -358,6 +408,14 @@ class AIAgent:
                 seen = vision.find(self.frame, self.ctl.prof.name)
                 return (json.dumps([{k: o[k] for k in ("what", "reach_cm", "base_deg")} for o in seen])
                         if seen else "nothing found on the table"), False
+            if name == "draw_start":
+                return self.draw.start(), False
+            if name == "draw_answer":
+                return self.draw.answer(str(a["text"])[:100]), False
+            if name == "draw_make":
+                return self.draw.make(str(a["what"]).lower().strip(), float(a.get("size_mm") or 0)), False
+            if name == "draw_wait":
+                return self.draw.wait(), False
             if name == "pick_up":
                 # the arm lands within ~1 cm and the camera map is about as good: a miss usually only
                 # nudges the cube, so look again and retry (each try re-finds it)

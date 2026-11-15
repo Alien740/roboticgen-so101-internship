@@ -391,6 +391,8 @@ details.more > * + * { margin-top: 8px; }
 .ailog .m.assistant { align-self: flex-start; background: #fff; border: 1px solid var(--hair); border-bottom-left-radius: 4px; }
 .ailog .m.tool { align-self: flex-start; background: transparent; color: var(--cyan-ink); font: 500 12px var(--mono); padding: 2px 8px; }
 .ailog .m.busy { align-self: flex-start; color: var(--slate); font-style: italic; }
+.ailog .m.thinking { align-self: flex-start; color: var(--slate); font-style: italic; font-size: 13px; padding: 0 8px; max-width: 92%; }
+.ailog .m.thinking::before { content: "Thinking · "; font-style: normal; font-weight: 600; letter-spacing: .02em; color: var(--cyan-ink); }
 .ai-input { display: flex; gap: 8px; } .ai-input .input { flex: 1; }
 
 /* status */

@@ -509,9 +509,14 @@ class Drawer:
         while True:
             self.sess.event("pen_height", tip_mm_above_last_paper=round((z - ps["paper_z"]) * 1000, 1))
             c = self.sess.ask("pen over the drawing spot: lower it until the tip JUST touches the paper - 'down' (1 mm), "
-                              "'down 5' (max 10), 'up 5', then 'touch'", ["down", "down 5", "up", "touch"]).split()
+                              "'down 5' (max 10), 'up 5', then 'touch' ('last': straight to the paper height found "
+                              "last time, and touch)", ["down", "down 5", "up", "touch", "last"]).split()
             if not c:
                 continue
+            if c[0] == "last":
+                z = ps["paper_z"]
+                self.line((cx, cy, z), speed=0.005, tip=True)
+                break
             if c[0] == "touch":
                 break
             if c[0] in ("down", "up"):

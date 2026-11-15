@@ -42,6 +42,7 @@ from so101.profile import FRAMEWORK_ROOT
 from . import drawing, mesh
 from .controller import SPEEDS, Controller
 from .ai import AIAgent
+from .ai_draw import DrawAgent
 from .motions import MOTIONS
 from .tasks import TaskRunner
 
@@ -69,6 +70,7 @@ class App:
         self.ctl = Controller(prof).start()
         self.tasks = TaskRunner(prof, self.ctl)
         self.ai = AIAgent(self.ctl)
+        self.ai.draw = DrawAgent(self.ctl, self.tasks)
         self.ai.workdir = prof.run_dir / "ai-chat"
         self.rec_dir = prof.run_dir / "recordings"
         self.token = token
@@ -167,7 +169,7 @@ class App:
             (d / f"{name_}.json").write_text(json.dumps(out))
             return {"ok": True, "name": name_}
         elif name == "vectorize":
-            return {"ok": True, **drawing.vectorize(body)}
+            return {"ok": True, **drawing.vectorize(body, self.prof)}
         elif name == "draw_plan":
             return {"ok": True, "plan": drawing.plan(self.prof.name, body)}
         elif name == "ai_tool":                       # one robot tool, for `so101-robot` (Claude Code backend)
