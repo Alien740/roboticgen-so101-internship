@@ -48,18 +48,26 @@ class DrawAgent:
         new = [e for e in st.get("events", []) if e.get("t", 0) > self._seen]
         if new:
             self._seen = max(e.get("t", 0) for e in new)
-        keep = ("pen_gripped", "auto_placed", "drawing", "drawn", "error", "hand_placed")
-        ev = [{k: v for k, v in e.items() if k != "t"} for e in new if e["type"] in keep]
-        strokes = [e for e in new if e["type"] == "stroke_done"]
-        if strokes:
-            ev.append({"strokes_done": strokes[-1]["index"], "of": strokes[-1]["of"]})
+        said = []
+        for e in new:
+            if e["type"] == "pen_gripped":
+                said.append(f"gripped the pen (jaws at {e['gripper']} %)")
+            elif e["type"] == "auto_placed":
+                said.append(f"pen on the paper at {e['center_mm']} mm")
+            elif e["type"] == "drawn":
+                said.append(f"drew '{e['shape']}': {e['line_mm']} mm of line in {e['seconds']} s")
+            elif e["type"] == "error":
+                said.append(f"ERROR {e['message']}")
+        done = [e for e in new if e["type"] == "stroke_done"]
+        if done and not any(e["type"] == "drawn" for e in new):
+            said.append(f"{done[-1]['index']} of {done[-1]['of']} strokes drawn")
+        head = ("; ".join(said) + ". ") if said else ""
         if st["state"] == "ended":
             self._reconnect()
-            return json.dumps({"program": "ended", "events": ev, "arm": "reconnected to the dashboard"})
+            return head + "The drawing program has ended; the arm is back with the dashboard."
         if st["state"] == "waiting":
-            return json.dumps({"program": "waiting", "asks": st["prompt"], "events": ev})
-        return json.dumps({"program": st["state"], "events": ev,
-                           "note": "still working (drawing?) - call draw_wait to keep waiting"})
+            return head + f"It asks: {st['prompt']}"
+        return head + "Still working (drawing) - call draw_wait to keep waiting."
 
     def _reconnect(self):
         if self.mode and self.ctl.backend is None:
@@ -82,7 +90,7 @@ class DrawAgent:
     def answer(self, text):
         st = self._state()
         if not self._mine(st):
-            return json.dumps({"program": "not running - call draw_start first"})
+            return "The drawing program is not running - call draw_start first."
         if st["state"] != "waiting":
             return self._report(self._wait())
         self.tasks.answer(text)
@@ -96,17 +104,17 @@ class DrawAgent:
         sheet, then `drawfile` at the program's menu."""
         st = self._state()
         if not (self._mine(st) and st["state"] == "waiting" and "'draw <shape>" in (st.get("prompt") or "")):
-            return json.dumps({"error": "the drawing program is not at its menu yet (pen placed?)", "asks": st.get("prompt")})
+            return f"Not at the drawing menu yet (pen placed?). It asks: {st.get('prompt')}"
         prof = profile.load(self.ctl.prof.name)
         if what in D.SHAPES:
             strokes = [[list(p) for p in st_] for st_ in D.shape(what, 100.0)]
         elif what == "picture":
             f = prof.run_dir / "drawings" / "upload.json"
             if not f.exists():
-                return json.dumps({"error": "no picture uploaded - upload one in the Draw tab first"})
+                return "No picture uploaded - upload one in the Draw tab first."
             strokes = json.loads(f.read_text())["strokes"]
         else:
-            return json.dumps({"error": f"unknown drawing '{what}' (shapes: {', '.join(D.SHAPES)}, or 'picture')"})
+            return f"Unknown drawing '{what}' (shapes: {', '.join(D.SHAPES)}, or 'picture')."
         if size_mm and size_mm > 0:
             size, off = min(float(size_mm), prof["drawing"]["max_size_mm"]), (0.0, 0.0)
         else:
@@ -114,12 +122,11 @@ class DrawAgent:
             size, off = D.fit_sheet(strokes, lean_map(prof), prof["drawing"]["max_size_mm"], MAX_LEAN_DEG)
         sim = D.simulate(prof, [[(u + off[0], v + off[1]) for u, v in s_] for s_ in D.fit_strokes(strokes, size)])
         if not sim["ok"]:
-            return json.dumps({"error": f"can't draw it there: {sim['error']} - try a smaller size"})
+            return f"Can't draw it there: {sim['error']} - try a smaller size."
         name = f"ai-{what}"
         d = prof.run_dir / "drawings"
         d.mkdir(parents=True, exist_ok=True)
         (d / f"{name}.json").write_text(json.dumps({"strokes": strokes, "size_mm": size, "offset_mm": list(off)}))
         self.tasks.answer(f"drawfile {name} {size:.0f}")
-        out = json.loads(self._report(self._wait()))
-        out["drawing"] = {"what": what, "size_mm": round(size), "planned_seconds": round(sim["frames"][-1][0])}
-        return json.dumps(out)
+        plan = f"Drawing a {what}, {size:.0f} mm (about {sim['frames'][-1][0]:.0f} s). "
+        return plan + self._report(self._wait())

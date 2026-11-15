@@ -55,7 +55,7 @@ class TaskRunner:
             d = json.loads(f.read_text())
         except (OSError, ValueError):
             return None
-        return d["angles"] if time.time() - d["t"] < 3.0 and self.running() else None
+        return d["angles"] if self.running() else None        # servos hold the last commanded pose
 
     def state(self):
         st = agent._state(self.prof, n_events=40)
