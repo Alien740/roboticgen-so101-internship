@@ -25,7 +25,6 @@
     <symbol id="i-status" viewBox="0 0 24 24"><path d="M3 12h4l2.5-6 5 12 2.5-6h4"/></symbol>
     <symbol id="i-cam" viewBox="0 0 24 24"><rect x="3" y="7" width="13" height="10" rx="2"/><path d="M16 11l5-3v8l-5-3"/></symbol>
     <symbol id="i-expand" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></symbol>
-    <symbol id="i-tag" viewBox="0 0 24 24"><path d="M3 12V4h8l10 10-8 8z"/><circle cx="7.5" cy="7.5" r="1.2"/></symbol>
     <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z" fill="currentColor"/></symbol>
     <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1.5" fill="currentColor"/></symbol>
     <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 3v5M15 3v5M6 8h12v3a6 6 0 0 1-12 0zM12 17v4"/></symbol>
@@ -67,7 +66,6 @@
   <!-- ---------------------------------------------------------------- 3D lab viewport -->
   <section class="viewport">
     <canvas id="twin"></canvas>
-    <div id="jointTags" class="joint-tags"></div>
 
     <div class="vp-top">
       <div class="vp-readout">
@@ -76,7 +74,6 @@
         <div class="ro"><span>Loop</span><b id="rate">–</b></div>
       </div>
       <div class="vp-tools">
-        <button id="btnTags" class="chipbtn on" title="Show each motor's angle, temperature and load on the 3D model"><svg class="ic"><use href="#i-tag"/></svg>Status</button>
         <button id="btnShow" class="chipbtn" title="Bigger cameras, for showing the robot to people"><svg class="ic"><use href="#i-expand"/></svg>Show mode</button>
         <div class="seg dark small" id="views">
           <button data-view="iso" class="on">3D</button>
@@ -432,7 +429,7 @@
 
       <!-- ============================================================== STATUS -->
       <div class="tabpane" id="tab-status" hidden>
-        <header class="pane-head"><h2>Status</h2><p>Every motor, live. The same readings are on the 3D model (Status button).</p></header>
+        <header class="pane-head"><h2>Status</h2><p>Every motor, live: angle, temperature, voltage and load.</p></header>
         <table class="motors">
           <thead><tr><th>#</th><th>joint</th><th>pos</th><th>goal</th><th>°C</th><th>V</th><th>load</th><th>torque</th><th>faults</th></tr></thead>
           <tbody id="motorRows"></tbody>

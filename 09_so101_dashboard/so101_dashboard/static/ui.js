@@ -1,4 +1,4 @@
-// Look-and-feel layer: keyboard and gamepad maps (2D art, live), status tags on the 3D model, the
+// Look-and-feel layer: keyboard and gamepad maps (2D art, live), the
 // "connect the arm" bar, segmented speed pickers and the Draw chooser (shape / sketch / picture).
 // Uses app.js globals: $, $$, api, toast, S, INFO, twin, LABELS, fmt, ready, padMode.
 "use strict";
@@ -144,59 +144,6 @@ const UI = (() => {
     });
     const rows = { lb: pr(4) || pr(5), lt: pr(6) || pr(7), a: pr(0), y: pr(3), view: pr(8), b: pr(1) };
     for (const [k, on] of Object.entries(rows)) $(`#padHelp tr[data-k="${k}"]`)?.classList.toggle("down", on);
-  }
-
-  // ------------------------------------------------------------------ status tags on the 3D model
-  const TAG_LINK = { shoulder_pan: "shoulder_link", shoulder_lift: "upper_arm_link", elbow_flex: "lower_arm_link",
-    wrist_flex: "wrist_link", wrist_roll: "gripper_link", gripper: "moving_jaw_so101_v1_link" };
-  let tagsOn = keep.get("tags") !== "0";
-  $("#btnTags").classList.toggle("on", tagsOn);
-  $("#jointTags").classList.toggle("off", !tagsOn);
-  $("#btnTags").onclick = () => {
-    tagsOn = !tagsOn; keep.set("tags", tagsOn ? "1" : "0");
-    $("#btnTags").classList.toggle("on", tagsOn); $("#jointTags").classList.toggle("off", !tagsOn);
-  };
-  function tags() {
-    requestAnimationFrame(tags);
-    const box = $("#jointTags");
-    if (!tagsOn || !twin || !S || !INFO || !S.frames || !["ready", "parking"].includes(S.state) || window.SIM_LOCK) { box.innerHTML = ""; box.dataset.n = ""; return; }
-    if (box.dataset.n !== "6") {
-      box.innerHTML = INFO.joints.map(j => `<div class="jt" data-j="${j}"><i class="ln"></i><div class="box"><div class="m"><span class="n">${LABELS[j] || j}</span>
-        <span class="v">–</span></div><div class="m"><span class="bar"><i></i></span><span class="t"></span></div></div></div>`).join("");
-      box.dataset.n = "6";
-    }
-    const pts = [];
-    for (const j of INFO.joints) {
-      const o = twin.origin(TAG_LINK[j]), p = o && twin.project(o);
-      pts.push({ j, p });
-    }
-    // labels in a tidy column right of the arm, top to bottom in the order of the joints on screen
-    const placed = pts.filter(q => q.p).sort((a, b) => a.p[1] - b.p[1]);
-    // labels go right of the arm, or left of it when they would run off the edge
-    const W = box.clientWidth, H = box.clientHeight, BW = 156;
-    const maxX = Math.max(...placed.map(q => q.p[0])), minX = Math.min(...placed.map(q => q.p[0]));
-    const roomR = W - 10 - BW - maxX, roomL = minX - 10 - BW;
-    const left = roomR < 40 && roomL > roomR;
-    const colX = left ? minX - Math.min(90, roomL) - BW : Math.min(maxX + Math.min(90, Math.max(40, roomR)), W - 10 - BW);
-    const mid = placed.reduce((s, q) => s + q.p[1], 0) / (placed.length || 1);
-    let y0 = Math.max(70, Math.min(H - placed.length * 46 - 20, mid - (placed.length - 1) * 23));
-    placed.forEach((q, i) => { q.y = y0 + i * 46; q.dx = colX - q.p[0]; });
-    for (const { j, p, y, dx } of pts) {
-      const el = box.querySelector(`[data-j="${j}"]`); if (!el) continue;
-      if (!p) { el.style.opacity = 0; continue; }
-      // the dot sits on the joint, a leader line runs to its label in the column
-      const dy = y - p[1], lx = left ? dx + BW : dx, len = Math.hypot(lx, dy);
-      el.style.opacity = 1; el.style.left = `${p[0]}px`; el.style.top = `${p[1]}px`;
-      const bx = el.querySelector(".box"); bx.style.top = `${dy}px`; bx.style.left = `${dx}px`;
-      const ln = el.querySelector(".ln"); ln.style.width = `${len}px`; ln.style.transform = `rotate(${Math.atan2(dy, lx)}rad)`;
-      const t = S.telemetry ? S.telemetry[j] : null, m = S.measured[j];
-      const load = t && t.load !== null ? Math.min(100, Math.abs(t.load) / 10) : 0;
-      el.querySelector(".v").textContent = m === undefined ? "–" : j === "gripper" ? `${fmt(m, 0)}% open` : `${fmt(m, 0)}°`;
-      el.querySelector(".bar i").style.width = `${load}%`;
-      el.querySelector(".t").textContent = t ? `${fmt(t.temp_c, 0)}°C · ${load.toFixed(0)}%` : "";
-      el.classList.toggle("hot", !!(t && (t.temp_c >= 50 || t.faults.length)));
-      el.classList.toggle("warn", !!(t && !(t.temp_c >= 50) && (t.temp_c >= 42 || load >= 70)));
-    }
   }
 
   // ------------------------------------------------------------------ "needs the arm" bar
@@ -347,6 +294,6 @@ const UI = (() => {
   }
 
   buildKeyboard(); buildPad(); shapeIcons(); setSrc(sel.src);
-  requestAnimationFrame(padLive); requestAnimationFrame(tags);
+  requestAnimationFrame(padLive);
   return { padArt, drawChoice, setSrc, sel, keep };
 })();

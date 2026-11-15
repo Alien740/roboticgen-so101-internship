@@ -49,7 +49,7 @@ const SIDE_JOINTS = {
   wrist_flex:    { from: "wrist", sign: -1, range: [-40, 95] },  // hand down = gripper down
 };
 // hand position in the picture (0..1, x as you see yourself) -> gripper reach / height (m)
-const JOY_SPACE = { x: [0.15, 0.85], y: [0.92, 0.38], reach: [0.15, 0.33], height: [0.01, 0.15] };   // y: chest level, not face level
+const JOY_SPACE = { x: [0.06, 0.94], y: [0.96, 0.24], reach: [0.15, 0.33], height: [0.01, 0.15] };   // y: most of the picture, bottom edge to eye level
 // Follow (joystick / side view) first moves here: gripper ~21 cm out, 5 cm above the table, pointing down,
 // half open - room to move every way. Folded at rest, most first moves would hit the table.
 const READY = { shoulder_lift: -20, elbow_flex: 30, wrist_flex: 70, wrist_roll: 0, gripper: 60 };

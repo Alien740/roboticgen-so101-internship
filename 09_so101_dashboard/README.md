@@ -72,7 +72,7 @@ Options: `--profile NAME` (framework profile, default `my_so101`), `--port 8000`
 | `so101_dashboard/server.py` | HTTP API + Server-Sent Events (live state ~20×/s), standard library only |
 | `so101_dashboard/frames.py` | pose of every URDF link for the twin |
 | `so101_dashboard/mesh.py` | builds `static/twin_mesh.json` from the STL parts (already built and committed) |
-| `so101_dashboard/static/` | the page: `index.html` + `style.css` (RoboticGen theme, one fixed screen), `app.js` (state, jog, keyboard, gamepad), `ui.js` (keyboard / gamepad maps, status tags on the 3D model, Draw chooser), `twin.js` (WebGL), `tasks.js` / `studio.js` (procedures, motions, record, drawing, cameras) |
+| `so101_dashboard/static/` | the page: `index.html` + `style.css` (RoboticGen theme, one fixed screen), `app.js` (state, jog, keyboard, gamepad), `ui.js` (keyboard / gamepad maps, connect-the-arm bar, Draw chooser), `twin.js` (WebGL), `tasks.js` / `studio.js` (procedures, motions, record, drawing, cameras) |
 
 ## More tabs
 
