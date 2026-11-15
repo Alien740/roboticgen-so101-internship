@@ -70,9 +70,9 @@ class DrawAgent:
         return head + "Still working (drawing) - call draw_wait to keep waiting."
 
     def _reconnect(self):
-        if self.mode and self.ctl.backend is None:
+        if self.ctl.backend is None:
             try:
-                self.ctl.connect(self.mode)
+                self.ctl.connect(self.mode or "real")      # (dashboard restarted mid-drawing: the real arm)
             except Exception:
                 pass
         self.mode = None
