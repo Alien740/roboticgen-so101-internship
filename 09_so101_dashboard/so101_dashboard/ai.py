@@ -53,7 +53,7 @@ How to work:
 - To put it down: put_down at a spot (reach 17-30 cm, base -60..60 deg).
 - Moves are slow and safe; each tool waits until the arm has arrived.
 - You can see the table through the overhead camera: find_objects lists the cubes/blocks on it with
-  their position. To pick one up, prefer pick_up (it finds it, lines the jaws up and grasps it).
+  their position. To pick one up, use pick_up (it finds it, grasps it and retries by itself).
   If find_objects sees nothing, say so - don't guess a position.
 - Pen drawing is done in the Draw tab, not with these tools - say so if asked to draw.
 - If a tool returns an error (E-STOP, out of reach, not connected), stop and tell the user plainly.
@@ -356,7 +356,13 @@ class AIAgent:
                 return (json.dumps([{k: o[k] for k in ("what", "reach_cm", "base_deg")} for o in seen])
                         if seen else "nothing found on the table"), False
             if name == "pick_up":
-                return self._pick_up(a["color"])
+                # the arm lands within ~1 cm and the camera map is about as good: a miss usually only
+                # nudges the cube, so look again and retry (each try re-finds it)
+                for attempt in range(3):
+                    text, err = self._pick_up(a["color"])
+                    if not err or "missed" not in text:
+                        return (text + (f" (try {attempt + 1})" if attempt else "")), err
+                return text + " - tried 3 times", True
             if name == "put_down":
                 m = c.prof["motion"]
                 r, pan = float(a["reach_cm"]) / 100, math.radians(float(a["base_deg"]))
