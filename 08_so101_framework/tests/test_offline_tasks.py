@@ -10,7 +10,7 @@ from so101 import profile as P
 
 MODULES = ["so101.vision.detect", "so101.vision.mapping", "so101.vision.preview", "so101.calibration.table",
            "so101.calibration.camera", "so101.calibration.hsv", "so101.tasks.common", "so101.tasks.pick_place",
-           "so101.tasks.basket", "so101.tasks.multi", "so101.tasks.stack", "so101.tasks.draw", "so101.report",
+           "so101.tasks.basket", "so101.tasks.multi", "so101.tasks.stack", "so101.tasks.draw", "so101.tasks.pathtools", "so101.vision.vectorize", "so101.report",
            "so101.doctor", "so101.cli"]
 
 
@@ -24,7 +24,8 @@ def test_calibration_grid_matches_the_proven_21_points():
     cfg = P.load()["tasks"]["table_calibration"]
     assert len(grid_points(cfg, "main")) == 9 and len(grid_points(cfg, "offset")) == 12
     allp = grid_points(cfg, "all")
-    assert len(allp) == 21 and allp[0] == (0.15, -0.10)
+    g = cfg["grids"]["main"]
+    assert len(allp) == 21 and allp[0] == (g["x"][0], g["y"][0])
 
 
 def test_fit_direct_recovers_a_tilted_camera():
@@ -83,3 +84,70 @@ def test_cli_parses(argv):
     from so101.cli import build_parser
     a = build_parser().parse_args(argv)
     assert callable(a.fn)
+
+
+def test_sketch_strokes_are_centred_and_scaled():
+    from so101.tasks.draw import fit_strokes
+    out = fit_strokes([[(10, 10), (30, 10), (30, 50)], [(0, 0)]], 40)      # 1-point strokes are dropped
+    pts = [p for st in out for p in st]
+    assert len(out) == 1
+    assert abs(max(p[1] for p in pts) - min(p[1] for p in pts) - 40) < 1e-9   # larger side -> 40 mm
+    assert abs(max(p[0] for p in pts) + min(p[0] for p in pts)) < 1e-9       # centred
+
+
+def test_drawing_to_the_side_stays_upright_from_the_base():
+    import math
+    from so101.tasks.draw import to_base
+    ahead = to_base([[(0, 0), (0, 10)]], (0.28, 0.0))[0]                    # +v = away from the robot
+    assert abs(ahead[1][0] - ahead[0][0] - 0.010) < 1e-9 and abs(ahead[1][1] - ahead[0][1]) < 1e-9
+    c = (0.285 * math.cos(math.radians(47)), 0.285 * math.sin(math.radians(47)))
+    side = to_base([[(0, 0), (0, 10)]], c)[0]                               # away = radially outward there
+    d = (side[1][0] - side[0][0], side[1][1] - side[0][1])
+    assert abs(math.degrees(math.atan2(d[1], d[0])) - 47) < 1e-6
+
+
+def test_plotter_cleanup_simplifies_merges_and_orders():
+    from so101.tasks import pathtools as T
+    wobbly = [(x, 0.01 * (-1) ** x) for x in range(50)]
+    assert len(T.simplify(wobbly, 0.1)) == 2                                     # jitter gone
+    assert T.simplify([(0, 0), (5, 0), (5, 5)], 0.1) == [(0, 0), (5, 0), (5, 5)]  # corner kept
+    assert len(T.merge([[(0, 0), (1, 0)], [(1, 0), (2, 0)]], 0.1)) == 1
+    far = [[(0, 0), (1, 0)], [(10, 0), (11, 0)], [(1.5, 0), (2, 0)]]
+    assert T.travel(T.order(far)) < T.travel(far)
+
+
+def test_picture_lines_become_single_pen_strokes():
+    from so101.vision import vectorize as V
+    img = np.full((300, 300), 250, np.uint8)
+    cv2.circle(img, (150, 150), 90, 20, 7)                                       # a thick ring
+    for x, y in np.random.default_rng(0).integers(0, 300, (200, 2)):
+        img[y, x] = 40                                                           # dust
+    r = V.vectorize(img, "lines", 0.5)
+    assert len(r["strokes"]) == 1                                                # one centre line, no outline pair
+    pts = np.array(r["strokes"][0]) * 300 / r["width"]
+    assert abs(np.hypot(*(pts - 150).T).mean() - 90) < 4
+
+
+def test_drawing_dry_run_plans_reachable_strokes():
+    from so101.tasks import draw as D
+    prof = P.load()
+    sim = D.simulate(prof, D.fit_strokes([[(-20, -20), (20, -20), (20, 20), (-20, 20), (-20, -20)]], 40))
+    assert sim["ok"], sim["error"]
+    downs = [f for f in sim["frames"] if f[2]]
+    plane, press = D.pen_setup(prof)["plane"], prof["drawing"]["press"]
+    assert downs and max(abs(f[3][2] - (D.plane_z(plane, f[3]) - press)) for f in downs) < 1e-6   # follows the paper map
+    ts = [f[0] for f in sim["frames"]]
+    assert ts == sorted(ts)
+
+
+def test_pen_length_from_two_poses_with_the_same_tip():
+    from so101 import kinematics as K
+    from so101.tasks import draw as D
+    L, pen = 0.068, np.array([-0.119, 0.964, 0.239]) / np.linalg.norm([-0.119, 0.964, 0.239])
+    seed = {"shoulder_pan": -54.8, "shoulder_lift": 49.4, "elbow_flex": 45.9, "wrist_flex": -81.5, "wrist_roll": 99.8}
+    A1, _, _ = K.pen_ik_local((0.21, 0.22, -0.03), seed, pen, length=L)
+    T1 = K.fk(A1)
+    down = T1[:3, :3].T @ np.array([0, 0, -1.0])
+    A2, err, _ = K.pen_ik_local((0.21, 0.22, -0.03), {**A1, "wrist_flex": A1["wrist_flex"] + 25}, down, w_vert=0.0, length=L)
+    got, mismatch, tilt = D.pen_length(T1, K.fk(A2), down)
+    assert err < 1e-4 and tilt > 5 and abs(got - L) < 0.001 and mismatch < 0.001

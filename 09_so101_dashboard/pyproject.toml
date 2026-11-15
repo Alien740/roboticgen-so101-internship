@@ -13,15 +13,17 @@ dependencies = []
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+ai = ["anthropic>=2.8"]          # AI tab (Claude); everything else needs only the standard library
 
 [project.scripts]
 so101-dashboard = "so101_dashboard.__main__:main"
+so101-robot = "so101_dashboard.robot_cli:main"
 
 [tool.setuptools.packages.find]
 include = ["so101_dashboard*"]
 
 [tool.setuptools.package-data]
-so101_dashboard = ["static/*"]
+so101_dashboard = ["static/*", "static/brand/*", "static/fonts/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

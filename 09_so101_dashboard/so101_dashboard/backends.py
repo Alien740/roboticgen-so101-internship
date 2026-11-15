@@ -14,6 +14,7 @@ Lessons kept from the framework's Arm class:
 """
 from __future__ import annotations
 
+import logging
 import random
 import time
 
@@ -89,6 +90,9 @@ class RealBackend:
         from so101.hardware.arm import Arm
         arm = Arm(self.prof)
         arm.__enter__()                       # retries, fault check, torque limits
+        # lerobot logs a multi-line warning every time max_relative_target trims a step; at 50 Hz
+        # that printing alone halved the control rate. The trim itself is expected and stays.
+        logging.getLogger("lerobot.robots.utils").setLevel(logging.ERROR)
         cap = float(self.prof["motion"]["max_relative"])
         arm.robot.config.max_relative_target = {j: (100.0 if j == "gripper" else cap) for j in JOINTS}
         self.arm, self.port = arm, arm.port
@@ -106,7 +110,8 @@ class RealBackend:
         return self.arm.robot.bus
 
     def read(self):
-        return {k: float(v) for k, v in self.bus.sync_read("Present_Position").items()}
+        # 2 retries like lerobot's own get_observation: single lost packets are common on a 5 V bus
+        return {k: float(v) for k, v in self.bus.sync_read("Present_Position", num_retry=2).items()}
 
     def write(self, goal):
         self.arm.robot.send_action({f"{j}.pos": float(v) for j, v in goal.items()})
@@ -135,7 +140,7 @@ class RealBackend:
         elif reg == "Present_Temperature":
             t["temp_c"] = int(v)
         elif reg == "Present_Load":
-            t["load"] = (-1 if v & 0x400 else 1) * (v & 0x3FF)
+            t["load"] = int(v)                 # lerobot already decoded the sign-magnitude bit
         elif reg == "Status":
             t["faults"] = [name for bit, name in STATUS_BITS.items() if v & bit]
         else:

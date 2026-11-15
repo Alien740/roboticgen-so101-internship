@@ -27,6 +27,20 @@ function toast(msg) {
   const t = $("#toast"); t.textContent = msg; t.hidden = false;
   clearTimeout(toastTimer); toastTimer = setTimeout(() => (t.hidden = true), 3500);
 }
+// Confirm by clicking twice instead of a confirm() pop-up: pop-ups are blocked in some browser tabs
+// (e.g. one an assistant's browser extension is driving), which silently cancelled the action.
+// First click arms the button (shows `label`), a second click within ARM_MS goes ahead.
+const ARM_MS = 6000;
+function twoStep(el, label) {
+  if (el.dataset.armed === "1") { clearTimeout(+el.dataset.armTimer); disarm(el); return true; }
+  el.dataset.armed = "1"; el.dataset.label = el.innerHTML; el.innerHTML = label; el.classList.add("armed");
+  el.dataset.armTimer = setTimeout(() => disarm(el), ARM_MS);
+  return false;
+}
+function disarm(el) {
+  if (el.dataset.armed !== "1") return;
+  el.dataset.armed = ""; el.innerHTML = el.dataset.label; el.classList.remove("armed");
+}
 const fmt = (v, d = 1) => (v === null || v === undefined || Number.isNaN(v) ? "–" : Number(v).toFixed(d));
 const ready = () => S && S.state === "ready" && !S.estop && S.torque;
 
@@ -120,7 +134,8 @@ function render() {
     $(`#out-${j}`).textContent = m === undefined ? "–" : fmt(m) + (j === "gripper" ? "" : "°");
     const [lo, hi] = INFO.limits[j], tick = inp.parentElement.querySelector(".meas");
     tick.style.display = m === undefined ? "none" : "";
-    if (m !== undefined) tick.style.left = `calc(${((m - lo) / (hi - lo)) * 100}% - 1px)`;
+    // the range thumb (20 px) travels 10 px in from each end, so the dot does too
+    if (m !== undefined) tick.style.left = `calc(10px + (100% - 20px) * ${Math.min(1, Math.max(0, (m - lo) / (hi - lo)))} - 5px)`;
   }
 
   if (S.tool) {
@@ -129,7 +144,7 @@ function render() {
     $("#toolPitch").textContent = `${fmt(S.tool.pitch_deg, 0)}°`;
   } else { $("#toolXyz").textContent = $("#toolPitch").textContent = "–"; }
   $("#rate").textContent = connected ? `${fmt(S.rate_hz, 0)} Hz` : "–";
-  if (twin && S.frames) { twin.setFrames(S.frames); $("#twinMsg").textContent = ""; }
+  if (twin && S.frames && !window.SIM_LOCK) { twin.setFrames(S.frames); $("#twinMsg").textContent = ""; }
 
   $("#warnings").innerHTML = S.warnings.slice().reverse().map(w =>
     `<li><time>${new Date(w.t * 1000).toLocaleTimeString()}</time>${escapeHtml(w.msg)}</li>`).join("");
@@ -161,11 +176,15 @@ $("#btnDisc").onclick = () => api("disconnect").catch(() => {});
 $("#btnEstop").onclick = () => estop();
 $("#btnReset").onclick = () => api("reset").catch(() => {});
 $$(".speed button").forEach(b => (b.onclick = () => api("speed", { level: b.dataset.speed }).catch(() => {})));
+let torqueArmed = 0;
 $("#torque").onchange = e => {
   const on = e.target.checked;
-  if (!on && !confirm("Torque OFF: the arm goes limp and will fall unless you hold it.\nHold the arm, then press OK.")) {
-    e.target.checked = true; return;
+  if (!on && Date.now() - torqueArmed > ARM_MS) {           // first untick: warn, second within 6 s: go
+    e.target.checked = true; torqueArmed = Date.now();
+    toast("Torque OFF makes the arm go limp. HOLD THE ARM, then untick Torque again (within 6 s).");
+    return;
   }
+  torqueArmed = 0;
   api("torque", { on }).catch(() => {});
 };
 function estop() { api("estop").catch(() => {}); }
@@ -205,7 +224,10 @@ const KEY_JOINTS = { q: ["shoulder_pan", -1], e: ["shoulder_pan", 1], w: ["shoul
   r: ["wrist_roll", -1], f: ["wrist_roll", 1], t: ["gripper", -1], g: ["gripper", 1] };
 const KEY_CART = { ArrowUp: ["x", 1], ArrowDown: ["x", -1], ArrowLeft: ["y", 1], ArrowRight: ["y", -1],
   PageUp: ["z", 1], PageDown: ["z", -1] };
-const typing = e => e.target.matches && e.target.matches("input[type=text], input[type=number], textarea");
+// any text field (an <input> without a type attribute is a text field too): keys type, they don't drive the arm
+const typing = e => { const t = e.target;
+  return !!t && (t.isContentEditable || t.tagName === "TEXTAREA" || t.tagName === "SELECT"
+    || (t.tagName === "INPUT" && !["range", "checkbox", "radio", "button", "submit"].includes(t.type))); };
 
 window.addEventListener("keydown", e => {
   if (typing(e)) return;
@@ -219,27 +241,34 @@ window.addEventListener("keyup", e => {
   const k = e.key.length === 1 ? e.key.toLowerCase() : e.key; held.keys.delete(k);
 });
 window.addEventListener("blur", () => held.keys.clear());
-$("#armKeys").onchange = e => { if (!e.target.checked) held.keys.clear(); e.target.blur(); };
+$("#armKeys").onchange = e => {
+  if (!e.target.checked) held.keys.clear();
+  $("#kbdWrap").classList.toggle("off", !e.target.checked); e.target.blur();
+};
+$("#kbdWrap").classList.add("off");
 
 // gamepad (standard mapping): joint mode keeps the layout of the old gamepad_control.py
 let padMode = "joint", padPrev = [], trig = { lt: false, rt: false };
-const PAD_HELP = {
-  joint: [["Left stick ↔ / ↕", "base pan / shoulder"], ["Right stick ↔ / ↕", "wrist roll / wrist flex"],
-    ["LB / RB", "elbow − / +"], ["LT / RT", "gripper close / open"]],
-  cart: [["Left stick ↕ / ↔", "tool forward / sideways"], ["Right stick ↕", "tool up / down"],
-    ["Right stick ↔", "wrist roll"], ["LB / RB", "wrist flex − / +"], ["LT / RT", "gripper close / open"]],
-  common: [["Y (hold)", "boost ×2"], ["A", "go to home pose"], ["Back / View", "switch joint ↔ tool mode"], ["B", "<b>E-STOP</b> (always)"]],
-};
-function padHelp() {
-  $("#padHelp").innerHTML = [...PAD_HELP[padMode], ...PAD_HELP.common].map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
+function padHelp() {                                   // the gamepad map and its table (ui.js)
+  if (typeof UI !== "undefined") UI.padArt(padMode);
   $$("#padMode button").forEach(b => b.classList.toggle("on", b.dataset.mode === padMode));
 }
 $$("#padMode button").forEach(b => (b.onclick = () => { padMode = b.dataset.mode; padHelp(); }));
 $("#armPad").onchange = e => e.target.blur();
 const dz = v => (Math.abs(v) < 0.15 ? 0 : (v - Math.sign(v) * 0.15) / 0.85);
 
+// a pad the browser can't see (Logitech F710 in X mode on a Mac) is read by the server over USB
+let serverPad = null, serverPadBusy = false;
+setInterval(async () => {
+  if (serverPadBusy || [...(navigator.getGamepads ? navigator.getGamepads() : [])].some(g => g && g.connected)) return;
+  serverPadBusy = true;
+  try { serverPad = await (await fetch("/api/pad", { headers: HDR })).json(); } catch (_) { serverPad = null; }
+  finally { serverPadBusy = false; }
+}, 40);
+
 function readGamepad() {
-  const gp = [...(navigator.getGamepads ? navigator.getGamepads() : [])].find(g => g && g.connected);
+  const gp = [...(navigator.getGamepads ? navigator.getGamepads() : [])].find(g => g && g.connected)
+    || (serverPad && serverPad.connected ? serverPad : null);
   if (!gp) { $("#padStatus").textContent = "No gamepad – plug one in and press any button."; return null; }
   $("#padStatus").textContent = `Connected: ${gp.id.slice(0, 60)}`;
   const btn = i => !!(gp.buttons[i] && gp.buttons[i].pressed);

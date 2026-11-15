@@ -10,7 +10,7 @@ if (-not (Test-Path $venvPy)) {
 }
 & $venvPy -c "import so101" 2>$null
 if ($LASTEXITCODE -ne 0) { throw "The framework's .venv has no 'so101' package. Re-run ..\08_so101_framework\install.ps1" }
-& $venvPy -m pip install -e .
+& $venvPy -m pip install -e ".[ai]"
 
 Write-Host "`nInstalled. Start it with:"
 Write-Host "  ..\08_so101_framework\.venv\Scripts\Activate.ps1"

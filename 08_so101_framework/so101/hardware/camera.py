@@ -82,6 +82,8 @@ class Camera:
     def from_profile(cls, prof):
         c = prof["camera"]
         idx = c.get("index", "auto")
+        if idx == "dashboard":
+            return DashboardCamera(c.get("settle_s", 0.15))
         if idx == "auto":
             idx, _ = find_camera(c["width"], c["height"], prefer=prof.get("measured", {}).get("camera", {}).get("index"))
             if idx is None:
@@ -130,6 +132,49 @@ class Camera:
 
     def __exit__(self, *exc):
         self.release()
+
+
+class DashboardCamera:
+    """Frames from the dashboard page: the browser has the camera (on a Mac, apps started from a
+    tool often get no camera permission), and the page sends the overhead camera's frames to the
+    dashboard server (POST /api/frame). Same interface as Camera."""
+
+    def __init__(self, settle_s=0.15, url=None):
+        import os
+        self.url = (url or os.environ.get("SO101_DASHBOARD", "http://127.0.0.1:8000")) + "/api/frame"
+        self.settle_s = settle_s
+        self.read(timeout=5.0)                                # fail early with a clear message
+
+    def _get(self):
+        import urllib.error
+        import urllib.request
+        try:
+            with urllib.request.urlopen(urllib.request.Request(self.url, headers={"X-SO101": "1"}), timeout=3) as r:
+                return float(r.headers["X-Frame-Time"]), r.read()
+        except (urllib.error.URLError, OSError):
+            return 0.0, None
+
+    def read(self, timeout=3.0):
+        """First frame the page captured at least settle_s after this call."""
+        t_req, t0 = time.time() + self.settle_s, time.time()
+        while time.time() - t0 < timeout:
+            t, data = self._get()
+            if data and t >= t_req:
+                f = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
+                if f is not None:
+                    return f
+            time.sleep(0.05)
+        raise RuntimeError("no fresh camera frame from the dashboard - open the dashboard page in the browser "
+                           "with the overhead camera (Camera 1) switched on")
+
+    def release(self):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        pass
 
 
 def camera_shift(ref, frame) -> float:

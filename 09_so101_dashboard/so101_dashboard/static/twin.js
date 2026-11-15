@@ -47,7 +47,7 @@ const Twin = (() => {
     o = vec4(uColor * (0.32 + d) + rim, 1.0);
   }`;
 
-  const VIEWS = { iso: [0.75, 0.40, 1.05], front: [0.0, 0.08, 1.0], side: [-1.5708, 0.08, 1.0], top: [0.0, 1.45, 1.1] };
+  const VIEWS = { iso: [0.75, 0.42, 0.92], front: [0.0, 0.10, 0.92], side: [-1.5708, 0.10, 0.92], top: [0.0, 1.45, 0.9] };
 
   function create(canvas, onStatus) {
     const gl = canvas.getContext("webgl2", { antialias: true });
@@ -66,14 +66,14 @@ const Twin = (() => {
 
     const parts = [];          // {link, vao, count, color}
     const lines = [];          // {vao, count, color}
-    let frames = null, dirty = true;
-    const cam = { yaw: VIEWS.iso[0], pitch: VIEWS.iso[1], dist: VIEWS.iso[2], at: [0.12, 0, 0.17] };
-    const dark = matchMedia("(prefers-color-scheme: dark)").matches;
-    const COLORS = {
+    const overlays = {};       // name -> {vao, count, color}: planned drawing, ink so far (setOverlay)
+    let frames = null, dirty = true, lastVP = null;
+    const cam = { yaw: VIEWS.iso[0], pitch: VIEWS.iso[1], dist: VIEWS.iso[2], at: [0.12, 0, 0.19] };
+    const COLORS = {                               // the lab viewport is always dark navy
       printed: [0.90, 0.91, 0.92],                 // white printed arm parts
       holder: [0.008, 0.184, 0.286],               // motor holders, #022F49
       motor: [0.07, 0.07, 0.08],                   // black STS3215 servos
-      grid: dark ? [0.22, 0.23, 0.24] : [0.80, 0.81, 0.82],    // neutral greys
+      grid: [0.12, 0.30, 0.40],                                // navy-cyan floor grid
       reach: [0.129, 0.612, 0.737],                            // teal #219CBC
       axisX: [0.85, 0.25, 0.25], axisY: [0.2, 0.7, 0.3],
     };
@@ -123,12 +123,20 @@ const Twin = (() => {
     }
 
     function partColor(p) {
-      if (p.kind === "motor") return COLORS.motor;
+      if (p.kind === "motor" || p.kind === "placeholder") return COLORS.motor;
       if (/motor_holder/.test(p.part)) return COLORS.holder;
       return COLORS.printed;
     }
 
     function setFrames(f) { frames = f; dirty = true; }
+    // pts: flat [x,y,z, x,y,z, ...] in pairs (gl.LINES), base frame metres; empty/null removes it
+    function setOverlay(name, pts, color) {
+      const old = overlays[name];
+      if (old) gl.deleteVertexArray(old.vao);
+      delete overlays[name];
+      if (pts && pts.length >= 6) overlays[name] = { vao: vao(new Float32Array(pts)), count: pts.length / 3, color };
+      dirty = true;
+    }
     function setView(name) { const v = VIEWS[name]; if (v) { [cam.yaw, cam.pitch, cam.dist] = v; dirty = true; } }
 
     function draw() {
@@ -148,12 +156,14 @@ const Twin = (() => {
                    cam.at[2] + cam.dist * Math.sin(cam.pitch)];
       const up = Math.abs(cam.pitch) > 1.4 ? [-Math.cos(cam.yaw), -Math.sin(cam.yaw), 0] : [0, 0, 1];
       const vp = M.mul(M.persp(0.75, w / h, 0.01, 10), M.lookAt(eye, cam.at, up));
+      lastVP = vp;
       gl.uniformMatrix4fv(u.vp, false, vp);
       gl.uniform3fv(u.eye, eye);
 
       gl.uniform1f(u.lit, 0);
       gl.uniformMatrix4fv(u.model, false, M.I);
       for (const l of lines) { gl.uniform3fv(u.color, l.color); gl.bindVertexArray(l.vao); gl.drawArrays(gl.LINES, 0, l.count); }
+      for (const l of Object.values(overlays)) { gl.uniform3fv(u.color, l.color); gl.bindVertexArray(l.vao); gl.drawArrays(gl.LINES, 0, l.count); }
 
       if (frames) {
         gl.uniform1f(u.lit, 1);
@@ -184,7 +194,25 @@ const Twin = (() => {
     }, { passive: false });
 
     (function loop() { draw(); requestAnimationFrame(loop); })();
-    return { load, setFrames, setView };
+    // look at a point (e.g. the drawing) from closer; focus(null) goes back to the default target
+    const HOME_AT = cam.at.slice(), HOME_DIST = cam.dist;
+    function focus(at, dist) {
+      cam.at = at ? at.slice() : HOME_AT.slice();
+      cam.dist = dist || (at ? cam.dist : HOME_DIST);
+      dirty = true;
+    }
+    // base-frame point (m) -> CSS px in the canvas, or null when behind the camera
+    function project(p) {
+      if (!lastVP) return null;
+      const v = lastVP, x = p[0], y = p[1], z = p[2];
+      const cx = v[0] * x + v[4] * y + v[8] * z + v[12], cy = v[1] * x + v[5] * y + v[9] * z + v[13];
+      const cw = v[3] * x + v[7] * y + v[11] * z + v[15];
+      if (cw <= 0.001) return null;
+      return [(cx / cw * 0.5 + 0.5) * canvas.clientWidth, (0.5 - cy / cw * 0.5) * canvas.clientHeight];
+    }
+    // where each link's frame is now (from the last setFrames), base frame metres
+    const origin = link => (frames && frames[link] ? [frames[link][12], frames[link][13], frames[link][14]] : null);
+    return { load, setFrames, setView, setOverlay, focus, project, origin };
   }
 
   return { create };

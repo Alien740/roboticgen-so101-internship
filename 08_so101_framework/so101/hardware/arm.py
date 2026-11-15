@@ -13,7 +13,9 @@ Lessons encoded here:
 """
 from __future__ import annotations
 
+import json
 import math
+import os
 import time
 
 import numpy as np
@@ -43,6 +45,30 @@ class Arm:
         )
         self.robot = SOFollower(cfg)
         self.fps = m["interp_fps"]
+        # every command is also published to runs/<profile>/live_pose.json (~10 Hz), so the dashboard's
+        # 3D twin can follow a task that owns the serial port
+        self._live, self._live_t = {}, 0.0
+        send = self.robot.send_action
+
+        def send_and_publish(action):
+            out = send(action)
+            self._publish(action)
+            return out
+        self.robot.send_action = send_and_publish
+
+    def _publish(self, action):
+        self._live.update({k.removesuffix(".pos"): round(float(v), 2) for k, v in action.items()})
+        now = time.time()
+        if now - self._live_t < 0.08:
+            return
+        self._live_t = now
+        try:
+            f = self.prof.run_dir / "live_pose.json"
+            tmp = f.with_suffix(".tmp")
+            tmp.write_text(json.dumps({"t": now, "angles": self._live}))
+            os.replace(tmp, f)
+        except OSError:
+            pass
 
     # ------------------------------------------------------------ lifecycle
     def __enter__(self):

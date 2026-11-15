@@ -38,6 +38,17 @@ Options: `--profile NAME` (framework profile, default `my_so101`), `--port 8000`
 - **Keyboard**: `Q/E W/S A/D Z/X R/F T/G` joints, arrows + PgUp/PgDn tool, Shift boost, 1/2/3 speed
 - **Gamepad**: same layout as the old `gamepad_control.py` (sticks pan/lift and roll/flex, LB/RB
   elbow, triggers gripper, Y boost, A home), Back switches to tool mode
+- **Hand** (camera, MediaPipe in the browser), four modes:
+  - **Hand joystick** (default, most reliable): hand tracking only. Hand left/right = gripper reach
+    (15-33 cm), up/down = height (table to 15 cm), fist/open = gripper; the gripper points straight
+    down and the base stays at a slider. A box on the video shows the reach.
+  - **Side view** (default): stand side-on; the robot works in one vertical plane (base set by a slider)
+    and its gripper follows your hand's reach/height in arm lengths, your hand's angle and your fingers
+    (fist = close). Steadiest, since the arm is seen in profile.
+  - **Front: whole arm**: hand position relative to your shoulder in 3D, including the base.
+  - **My hand**: the hand as a 3D cursor with a clutch (the arm starts from where it is).
+  All go through the server's IK (`/api/hand`): reach edge, noise hold-zone, table limit, E-STOP,
+  gripper stall guard. Needs Chrome/Safari with camera permission and internet the first time.
 - **Status**: per-motor position, goal, temperature, voltage, load, torque and fault flags; OS,
   Python, lerobot and serial ports; **Run doctor** button
 
@@ -61,15 +72,33 @@ Options: `--profile NAME` (framework profile, default `my_so101`), `--port 8000`
 | `so101_dashboard/server.py` | HTTP API + Server-Sent Events (live state ~20×/s), standard library only |
 | `so101_dashboard/frames.py` | pose of every URDF link for the twin |
 | `so101_dashboard/mesh.py` | builds `static/twin_mesh.json` from the STL parts (already built and committed) |
-| `so101_dashboard/static/` | the page: `index.html`, `app.js` (UI, keyboard, gamepad), `twin.js` (WebGL) |
+| `so101_dashboard/static/` | the page: `index.html` + `style.css` (RoboticGen theme, one fixed screen), `app.js` (state, jog, keyboard, gamepad), `ui.js` (keyboard / gamepad maps, connect-the-arm bar, Draw chooser), `twin.js` (WebGL), `tasks.js` / `studio.js` (procedures, motions, record, drawing, cameras) |
+
+## More tabs
+
+- **Draw** – three steps, *Choose → Check in 3D → Draw on paper*. Choose a shape (square, circle, star,
+  spiral, smiley, house), sketch one in the box, or drop a picture. **Check in 3D** plans every stroke
+  exactly as the robot will draw it and plays it on the twin. **Draw it on paper** (real arm) starts the
+  framework's drawing procedure (`so101 draw`): load the pen, place it on the paper by hand, and the
+  chosen drawing starts by itself when the robot is ready. The choice is kept across a page reload.
+- **Tasks** / **Calibrate**: the framework's vision tasks (pick & place, basket, clear all, stack,
+  report, practice) and calibrations (robot quirks, table, camera lens, object colour). The dashboard
+  parks the arm, hands it to the procedure (`so101 --agent ...`), shows each prompt with buttons and an
+  answer box, and refuses to reconnect until it ends. Only known tasks can be started (`tasks.py`).
+- **Motions**: wave hello, nod, shake, dance, bow, chomp - keyframes in `motions.py`, all kept well above
+  the table (tested).
+- **Record**: record any movement (sliders, hand control, or by hand with torque off) and replay it at
+  ×0.5-×2; saved in `runs/<profile>/recordings/`.
+
+Motions and replays run through the controller's playback: eased start, smooth accel/brake, E-STOP and
+limits as everywhere; any other command interrupts them.
 
 ## Roadmap
 
 1. ✅ Core: simulated arm, status, E-STOP, 3D twin, manual / keyboard / gamepad control
-2. Motions (hello, scare, dance) and record / replay
-3. Camera, calibration and the framework's tasks
-4. Drawing board
-5. AI commands (Claude, OpenAI or a local model)
+2. ✅ Hand / arm following, motions, record / replay
+3. ✅ Camera tasks, calibrations and drawing (framework procedures)
+4. AI commands (Claude, OpenAI or a local model)
 
 ## Tests (no hardware)
 
