@@ -24,8 +24,9 @@ motion:
   move_duration_s: 2.0
   travel_z: 0.10               # m, carry height
   approach_z: 0.07
-  grasp_z: 0.002               # tool-tip height when grasping a cube on the table (12 mm closed above it: the
-                               # table is ~1 cm below the model's z=0 on this arm - home rests the tool at -8.6 mm)
+  grasp_z: -0.006              # tool-tip height when grasping a cube on the table: fingertips near the table. The
+                               # table is ~1 cm below the model's z=0 and that varies over the table (12 mm and 2 mm
+                               # both closed above the cube somewhere); brushing the table is harmless
   top_down_pitch: -90.0
   reach_min: 0.15              # top-down IK at travel height needs r >= ~15 cm
   reach_max: 0.33              # grasp; drops allow up to drop_reach_max
@@ -59,7 +60,7 @@ wrist:
   pen_dir_tool: [1.0, 0.0, 0.03]
 
 objects:
-  cube:   {color: orange, size: [0.019, 0.016], height: 0.019, grasp_z: 0.002, torque: 450, max_aspect: 1.6}
+  cube:   {color: orange, size: [0.019, 0.016], height: 0.019, grasp_z: -0.006, torque: 450, max_aspect: 1.6}
   lego:   {color: yellow, size: [0.0316, 0.0156], height: 0.0114, grasp_z: -0.006, torque: 800, max_aspect: 2.8, align: true}
   # brick: 49.7 mm across vs a ~60 mm jaw opening -> only 3 mm fixed-jaw clearance fits
   brick:  {color: yellow, size: [0.0797, 0.0497], height: 0.0299, grasp_z: 0.005, torque: 450, max_aspect: 2.2, align: true, clearance: 0.003}
@@ -116,7 +117,7 @@ tasks:
   pick_place:
     object: cube
     place_xy: [0.10, 0.16]     # fixed destination, base frame (m)
-    place_z: 0.004             # release ~2 mm above grasp height (cube on the table)
+    place_z: -0.004            # release ~2 mm above grasp height (cube on the table)
     success_tol_mm: 20
   basket:
     object: cube
