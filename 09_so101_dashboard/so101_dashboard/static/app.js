@@ -257,8 +257,18 @@ $$("#padMode button").forEach(b => (b.onclick = () => { padMode = b.dataset.mode
 $("#armPad").onchange = e => e.target.blur();
 const dz = v => (Math.abs(v) < 0.15 ? 0 : (v - Math.sign(v) * 0.15) / 0.85);
 
+// a pad the browser can't see (Logitech F710 in X mode on a Mac) is read by the server over USB
+let serverPad = null, serverPadBusy = false;
+setInterval(async () => {
+  if (serverPadBusy || [...(navigator.getGamepads ? navigator.getGamepads() : [])].some(g => g && g.connected)) return;
+  serverPadBusy = true;
+  try { serverPad = await (await fetch("/api/pad", { headers: HDR })).json(); } catch (_) { serverPad = null; }
+  finally { serverPadBusy = false; }
+}, 40);
+
 function readGamepad() {
-  const gp = [...(navigator.getGamepads ? navigator.getGamepads() : [])].find(g => g && g.connected);
+  const gp = [...(navigator.getGamepads ? navigator.getGamepads() : [])].find(g => g && g.connected)
+    || (serverPad && serverPad.connected ? serverPad : null);
   if (!gp) { $("#padStatus").textContent = "No gamepad – plug one in and press any button."; return null; }
   $("#padStatus").textContent = `Connected: ${gp.id.slice(0, 60)}`;
   const btn = i => !!(gp.buttons[i] && gp.buttons[i].pressed);

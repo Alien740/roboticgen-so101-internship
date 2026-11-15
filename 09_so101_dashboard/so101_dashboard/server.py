@@ -12,6 +12,7 @@ GET  /api/task            the running framework task (draw, pick-place, calibrat
 GET  /api/library         motions and saved recordings
 GET  /api/ai              the AI tab's transcript (Claude plans moves with the controller's tools)
 GET  /api/frame           the overhead camera's latest frame (JPEG; the page sends it: POST /api/frame)
+GET  /api/pad             a USB gamepad the browser can't see (Xbox-360 protocol, e.g. Logitech F710 in X mode)
 POST /api/<command>       connect, disconnect, estop, reset, speed, torque, jog, set, goto, hand, mimic,
                           motion, record, play, delete_recording, task, save_drawing, ai, ai_tool, doctor,
                           vectorize (picture -> strokes), draw_plan (dry run of a drawing for the 3D twin)
@@ -43,6 +44,7 @@ from . import drawing, mesh
 from .controller import SPEEDS, Controller
 from .ai import AIAgent
 from .ai_draw import DrawAgent
+from .xpad import XPad
 from .motions import MOTIONS
 from .tasks import TaskRunner
 
@@ -75,6 +77,7 @@ class App:
         self.rec_dir = prof.run_dir / "recordings"
         self.token = token
         self.frame = (0.0, None)              # (time, JPEG bytes): the overhead camera, sent by the page
+        self.pad = XPad().start()             # X-mode USB gamepads the browser can't see (F710 on a Mac)
         self.ai.frame = lambda: self.frame
         self._doctor_lock = threading.Lock()
 
@@ -287,6 +290,8 @@ def make_handler(app: App):
                 self.send_header("Cache-Control", "no-store")
                 self.end_headers()
                 return self.wfile.write(data)
+            if path == "/api/pad":
+                return self._send(200, {**app.pad.snapshot(), "error": app.pad.error})
             if path == "/api/ai":
                 return self._send(200, app.ai.state())
             return self._static(path)
