@@ -321,7 +321,9 @@ async function pollAI() {
 async function aiSend(text) {
   text = (text ?? $("#aiText").value).trim();
   if (!text) return;
-  if (!S || S.state !== "ready") { toast("Connect the arm (or the simulated one) first"); return; }
+  // a framework procedure (the AI's own pen drawing) has the arm while it runs: the chat still talks to it
+  const procedure = TASK && ["starting", "running", "waiting"].includes(TASK.state);
+  if ((!S || S.state !== "ready") && !procedure) { toast("Connect the arm (or the simulated one) first"); return; }
   try { await api("ai", { op: "ask", text }); $("#aiText").value = ""; } catch (_) { return; }
   pollAI();
 }
