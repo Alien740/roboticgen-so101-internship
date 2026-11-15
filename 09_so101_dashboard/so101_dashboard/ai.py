@@ -66,6 +66,8 @@ How to work:
   drawing, call draw_wait. Afterwards draw_answer "aside" so the camera sees the sheet. To finish:
   draw_answer "quit" - it then asks someone to hold the pen; tell the user, and when they confirm,
   draw_answer "go" to open the jaws (the arm then reconnects to the dashboard).
+  Answer only the question the program is asking right now (the user may also press buttons in the
+  Draw tab): if you're not sure what it asks, call draw_wait first - it returns the current question.
   While the drawing program runs, the other robot tools are unavailable.
 - If a tool returns an error (E-STOP, out of reach, not connected), stop and tell the user plainly.
 Before each tool call, write one short line (under 12 words) saying what you are about to do and

@@ -93,8 +93,20 @@ class DrawAgent:
             return "The drawing program is not running - call draw_start first."
         if st["state"] != "waiting":
             return self._report(self._wait())
+        prompt = st.get("prompt") or ""
+        note = ""
+        if "HOLD THE ARM" in prompt and text.strip().lower() != "auto":
+            # 'go' here makes the arm go limp for placing by hand - never from the chat
+            text, note = "auto", "(answered 'auto': the arm never goes limp from the chat) "
+        if any(k in prompt for k in ("move the pen by hand", "TILTED", "SAME centre")):
+            return ("This step needs someone to move the arm by hand - ask the user to do it in the Draw tab, "
+                    "or answer 'stop'. It asks: " + prompt) if text.strip().lower() != "stop" else self._stop()
         self.tasks.answer(text)
-        return self._report(self._wait())
+        return note + self._report(self._wait())
+
+    def _stop(self):
+        self.tasks.stop()
+        return self._report(self._wait(30))
 
     def wait(self):
         return self._report(self._wait())
